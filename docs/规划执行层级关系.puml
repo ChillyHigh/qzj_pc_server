@@ -1,0 +1,61 @@
+@startuml
+title 规划执行层级关系
+
+skinparam componentStyle rectangle
+skinparam shadowing false
+skinparam defaultFontName "PingFang SC"
+
+package "Task A：规划执行任务\nPlanningExecutionTask" as TaskA {
+  [规划层\nPlanner] as Planner
+  [执行层\nMissionExecutor] as Executor
+  [协议客户端\nProtocol/Client] as Client
+
+  Planner --> Executor : 最优动作图\nPlan(ActionBlock[])
+  Executor --> Client : 下发动作命令\nMoveToPose / MoveArm / GripLift / ToolCommand
+  Client --> Executor : 动作反馈\nActionFeedback(done/failed/timeout)
+}
+
+node "下位机\nMCU" as MCU {
+  [底盘控制] as Chassis
+  [五连杆/升降控制] as Arm
+  [夹爪/漏斗控制] as Tool
+  [惯导融合修正] as ImuFusion
+}
+
+package "Task B：AprilTag 定位服务\nAprilTagLocalizationTask" as TaskB {
+  [AprilTag 解算] as TagSolver
+  [定位串口发送] as TagSerial
+
+  TagSolver --> TagSerial : x / y / yaw
+}
+
+Client --> MCU : 统一控制帧\n14 float + flags
+MCU --> Client : 到位/失败反馈
+
+TagSerial --> ImuFusion : 定位数据\nx / y / yaw
+ImuFusion --> Chassis : 修正底盘定位
+
+note right of TaskA
+规划层和执行层不涉及 AprilTag。
+这里只下发目标点/动作块，
+然后等待下位机反馈到位。
+end note
+
+note right of TaskB
+AprilTag 定位服务是独立 task。
+它直接通过串口把 x/y/yaw 给下位机，
+不与 Planner / MissionExecutor 通信。
+本工程不用实现该 task。
+end note
+
+note bottom of Executor
+执行层负责动作块调度：
+- 按依赖关系执行
+- 同资源互斥
+- 可并行动作同时下发
+- 关键取放点等待同步
+- 支持预设动作，如 GripLift：
+  一边升高 h，一边合上夹爪
+end note
+
+@enduml

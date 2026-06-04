@@ -1,0 +1,45 @@
+@startuml
+title Compiled DAG 执行主流程
+
+skinparam shadowing false
+skinparam componentStyle rectangle
+skinparam defaultFontName "PingFang SC"
+skinparam ranksep 45
+skinparam nodesep 30
+
+left to right direction
+
+[Planner\n内部完成 motion + TOPPRA\n输出 Compiled DAG\nActionNode(kind, q,dq,duration)\nWaitNode(feedback target)] as Planner
+[Executor\n按 DAG deps/resources 调度\n启动 ready Action] as Executor
+[RuntimeMixer\n每帧合并 active actions\nchassis + arm + flags] as Mixer
+[Protocol/Client\npack_frame\n14 float + flags] as Client
+node "下位机 MCU\n闭环控制 / 到位反馈" as MCU
+
+Planner --> Executor : Compiled DAG
+Executor --> Mixer : active actions
+Mixer --> Client : 当前整车目标
+Client --> MCU : 控制帧
+MCU --> Executor : feedback\n满足 WaitNode 后解锁后继节点
+
+note bottom of Planner
+Planner 输出前已完成：
+- 小 motion 生成几何路径
+- TOPPRA 时间规划
+- ActionNode 写入 q/dq/duration
+end note
+
+note bottom of Executor
+执行阶段只看 DAG：
+- ActionNode ready 后启动
+- WaitNode 只由反馈满足
+- 资源冲突禁止并行
+不 import TOPPRA。
+end note
+
+note bottom of Mixer
+每帧合并当前 active actions。
+不能预先生成整段整车帧，
+因为 WaitNode 何时满足取决于 MCU feedback。
+end note
+
+@enduml
