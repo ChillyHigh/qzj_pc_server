@@ -1,33 +1,33 @@
 from __future__ import annotations
 
 import threading
-import time
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Callable
 
-import numpy as np
 import serial
 
-from command import CommandStream
-from protocol import Feedback, pack_frame, parse_feedback
+from .protocol import Feedback, pack_frame, parse_feedback
 
 
 @dataclass(frozen=True, slots=True)
 class MachineState:
-    """执行层维护的最近目标状态。
-
-    字段单位与协议完全一致。执行层合并底盘和 arm 轨迹时，以该状态补齐未运动轴。
-    """
+    """执行层维护的最近目标状态。"""
 
     x: float = 0.3
     y: float = 0.0
     yaw: float = 0.0
     h: float = 0.3
-    q1: float = -0.5235987755982988
-    q2: float = -2.6179938779914944
+    q1: float = 3.6651914291880923
+    q2: float = 3.6651914291880923
     gripper_yaw: float = 0.0
     gripper_opening: float = 0.0
+    dx: float = 0.0
+    dy: float = 0.0
+    dyaw: float = 0.0
+    dh: float = 0.0
+    dq1: float = 0.0
+    dq2: float = 0.0
     flags: int = 0
 
 
@@ -51,13 +51,11 @@ class WebSocketConfig:
 
 
 class Transport(ABC):
-    """通信策略接口。
-
-    `send_frame` 必须完整发送一个二进制控制帧；反馈通过后台线程解析并发布。
-    """
+    """通信策略接口。"""
 
     def __init__(self) -> None:
         self._feedback: Feedback | None = None
+        self._error: Exception | None = None
         self._callback: Callable[[Feedback], None] | None = None
 
     @property
@@ -66,15 +64,24 @@ class Transport(ABC):
 
         return self._feedback
 
+    @property
+    def error(self) -> Exception | None:
+        """返回后台接收错误；没有错误时为 None。"""
+
+        return self._error
+
     def set_feedback_callback(self, callback: Callable[[Feedback], None]) -> None:
         """设置反馈回调；每收到完整反馈帧调用一次。"""
 
         self._callback = callback
 
     def clear_feedback(self) -> None:
-        """清空最近反馈，用于新动作开始前避免读取旧到位状态。"""
+        """清空最近反馈。"""
 
         self._feedback = None
+
+    def _fail(self, exc: Exception) -> None:
+        self._error = exc
 
     def _publish(self, feedback: Feedback) -> None:
         self._feedback = feedback
@@ -130,23 +137,17 @@ class SerialTransport(Transport):
 
     def _rx_loop(self) -> None:
         buf = bytearray()
-        while self._running:
-            if self._ser is None:
-                time.sleep(0.01)
-                continue
-            data = self._ser.read(256)
-            if not data:
-                continue
-            buf.extend(data)
-            if len(buf) > 1024:
-                del buf[: len(buf) - 1024]
-            while buf:
-                feedback, consumed = parse_feedback(buf)
-                if consumed > 0:
-                    del buf[:consumed]
-                if feedback is None:
-                    break
-                self._publish(feedback)
+        try:
+            while self._running:
+                if self._ser is None:
+                    raise RuntimeError("串口接收线程发现串口对象为空。")
+                data = self._ser.read(256)
+                if not data:
+                    continue
+                _consume_feedback_bytes(buf, data, self._publish)
+        except Exception as exc:
+            self._fail(exc)
+            self._running = False
 
 
 class WebSocketTransport(Transport):
@@ -192,45 +193,26 @@ class WebSocketTransport(Transport):
 
     def _rx_loop(self) -> None:
         buf = bytearray()
-        while self._running:
-            if self._ws is None:
-                time.sleep(0.01)
-                continue
-            try:
-                data = self._ws.recv(timeout=self.cfg.recv_timeout)
-            except TimeoutError:
-                continue
-            except Exception:
-                break
-            if not isinstance(data, (bytes, bytearray)):
-                continue
-            buf.extend(data)
-            if len(buf) > 1024:
-                del buf[: len(buf) - 1024]
-            while buf:
-                feedback, consumed = parse_feedback(buf)
-                if consumed > 0:
-                    del buf[:consumed]
-                if feedback is None:
-                    break
-                self._publish(feedback)
+        try:
+            while self._running:
+                if self._ws is None:
+                    raise RuntimeError("websocket 接收线程发现连接对象为空。")
+                try:
+                    data = self._ws.recv(timeout=self.cfg.recv_timeout)
+                except TimeoutError:
+                    continue
+                if not isinstance(data, (bytes, bytearray)):
+                    raise RuntimeError(f"websocket 收到非二进制反馈：{type(data)!r}")
+                _consume_feedback_bytes(buf, data, self._publish)
+        except Exception as exc:
+            self._fail(exc)
+            self._running = False
 
 
 class Client:
-    """统一下发客户端。
-
-    底盘和 arm 不拆串口。调用方传入已经合成好的 `CommandStream`，
-    Client 只按统一协议打包发送，不关心 TOPPRA、IK 或动作来源。
-    """
+    """统一下发客户端；只发送当前单帧，不理解 DAG 或轨迹来源。"""
 
     def __init__(self, transport: Transport, *, state: MachineState | None = None) -> None:
-        """创建客户端。
-
-        Args:
-            transport: 串口或 websocket 通信策略。
-            state: 执行层已知的最近目标状态；为空时使用仿真初始状态。
-        """
-
         self.transport = transport
         self.state = state or MachineState()
 
@@ -239,6 +221,12 @@ class Client:
         """最近反馈帧。"""
 
         return self.transport.feedback
+
+    @property
+    def error(self) -> Exception | None:
+        """后台接收错误。"""
+
+        return self.transport.error
 
     def connect(self) -> bool:
         """连接通信后端。"""
@@ -255,91 +243,49 @@ class Client:
 
         self.transport.set_feedback_callback(callback)
 
-    def send_stream(self, stream: CommandStream, *, rate_hz: float | None = None) -> None:
-        """按统一协议发送整车命令流。
+    def clear_feedback(self) -> None:
+        """清空最近反馈。"""
 
-        `stream.q` 和 `stream.dq` 已经包含完整整车状态，通信层不再合并底盘/arm。
-        """
-
-        period_s = self._period(stream, rate_hz)
-        next_time = time.perf_counter()
         self.transport.clear_feedback()
 
-        for idx in range(stream.point_count):
-            frame = self._frame_at(stream, idx)
-            self.transport.send_frame(frame)
-            if period_s <= 0.0:
-                continue
-            next_time += period_s
-            sleep_s = next_time - time.perf_counter()
-            if sleep_s > 0.0:
-                time.sleep(sleep_s)
+    def send_command(self, state: MachineState) -> None:
+        """发送一个完整控制周期的目标状态。"""
 
-        self._commit_state(stream)
-
-    def wait_done(self, timeout_s: float = 2.0, poll_s: float = 0.02) -> bool:
-        """等待反馈到位。
-
-        MuJoCo 桥接和下位机均应在 `flags` 中置位 `FLAG_DONE`。
-        当前没有反馈时会等待到超时，返回 False。
-        """
-
-        from protocol import FLAG_DONE
-
-        deadline = time.perf_counter() + timeout_s
-        while time.perf_counter() < deadline:
-            feedback = self.feedback
-            if feedback is not None and feedback.flags & FLAG_DONE:
-                return True
-            time.sleep(poll_s)
-        return False
-
-    def _frame_at(
-        self,
-        stream: CommandStream,
-        idx: int,
-    ) -> bytes:
-        q = stream.q[idx]
-        dq = stream.dq[idx]
-
-        return pack_frame(
-            float(q[0]),
-            float(q[1]),
-            float(q[2]),
-            float(q[3]),
-            float(q[4]),
-            float(q[5]),
-            float(q[6]),
-            float(q[7]),
-            float(dq[0]),
-            float(dq[1]),
-            float(dq[2]),
-            float(dq[3]),
-            float(dq[4]),
-            float(dq[5]),
-            int(stream.flags[idx]),
+        if self.transport.error is not None:
+            raise RuntimeError(f"通信接收失败：{self.transport.error}") from self.transport.error
+        frame = pack_frame(
+            state.x,
+            state.y,
+            state.yaw,
+            state.h,
+            state.q1,
+            state.q2,
+            state.gripper_yaw,
+            state.gripper_opening,
+            state.dx,
+            state.dy,
+            state.dyaw,
+            state.dh,
+            state.dq1,
+            state.dq2,
+            state.flags,
         )
+        self.transport.send_frame(frame)
+        self.state = state
 
-    def _commit_state(self, stream: CommandStream) -> None:
-        q = stream.q[-1]
-        self.state = MachineState(
-            float(q[0]),
-            float(q[1]),
-            float(q[2]),
-            float(q[3]),
-            float(q[4]),
-            float(q[5]),
-            float(q[6]),
-            float(q[7]),
-            int(stream.flags[-1]),
-        )
 
-    def _period(self, stream: CommandStream, rate_hz: float | None) -> float:
-        if rate_hz is not None:
-            if rate_hz <= 0.0:
-                return 0.0
-            return 1.0 / rate_hz
-        if stream.point_count < 2:
-            return 0.0
-        diffs = np.diff(stream.t)
-        return float(np.median(diffs))
+def _consume_feedback_bytes(
+    buf: bytearray,
+    data: bytes | bytearray,
+    publish: Callable[[Feedback], None],
+) -> None:
+    buf.extend(data)
+    if len(buf) > 1024:
+        del buf[: len(buf) - 1024]
+    while buf:
+        feedback, consumed = parse_feedback(buf)
+        if consumed > 0:
+            del buf[:consumed]
+        if feedback is None:
+            break
+        publish(feedback)

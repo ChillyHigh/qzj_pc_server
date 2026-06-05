@@ -6,14 +6,14 @@ from dataclasses import dataclass
 
 SOF = 0xAA55
 
-FLAG_GRIPPER_ENABLE = 0x01
-FLAG_UPPER_FUNNEL_OPEN = 0x02
-FLAG_LOWER_FUNNEL_OPEN = 0x04
-FLAG_DONE = 0x80
+FLAG_UPPER_FUNNEL_OPEN = 0x01
+FLAG_LOWER_FUNNEL_OPEN = 0x02
 
+CMD_FLOAT_COUNT = 14
+FEEDBACK_FLOAT_COUNT = 6
 CMD_FORMAT = "<H14fB"
 CMD_SIZE = struct.calcsize(CMD_FORMAT)
-FEEDBACK_FORMAT = "<H14fB"
+FEEDBACK_FORMAT = "<H6f"
 FEEDBACK_SIZE = struct.calcsize(FEEDBACK_FORMAT)
 SOF_BYTES = struct.pack("<H", SOF)
 
@@ -24,10 +24,7 @@ class ProtocolError(ValueError):
 
 @dataclass(frozen=True, slots=True)
 class Feedback:
-    """下位机或 MuJoCo 桥接反馈。
-
-    字段顺序与控制帧一致。`flags & FLAG_DONE` 表示当前目标已到位。
-    """
+    """下位机或 MuJoCo 桥接反馈。"""
 
     x: float
     y: float
@@ -35,15 +32,6 @@ class Feedback:
     h: float
     q1: float
     q2: float
-    gripper_yaw: float
-    gripper_opening: float
-    dx: float
-    dy: float
-    dyaw: float
-    dh: float
-    dq1: float
-    dq2: float
-    flags: int
 
 
 def pack_frame(
@@ -63,12 +51,7 @@ def pack_frame(
     dq2: float,
     flags: int,
 ) -> bytes:
-    """打包统一控制帧。
-
-    帧格式：`SOF + 14 * float32 + uint8 flags`，小端序。
-    14 个 float 依次为：
-    `x,y,yaw,h,q1,q2,gripper_yaw,gripper_opening,dx,dy,dyaw,dh,dq1,dq2`。
-    """
+    """打包统一控制帧。"""
 
     values = (
         x,
@@ -94,11 +77,7 @@ def pack_frame(
 
 
 def parse_feedback(data: bytes | bytearray) -> tuple[Feedback | None, int]:
-    """从字节流解析一帧反馈。
-
-    返回 `(feedback, consumed)`。当数据不足时返回 `(None, 0)`；
-    当帧头前存在垃圾字节时返回 `(None, 垃圾长度)`。
-    """
+    """从字节流解析一帧反馈。"""
 
     idx = data.find(SOF_BYTES)
     if idx < 0:
@@ -112,8 +91,7 @@ def parse_feedback(data: bytes | bytearray) -> tuple[Feedback | None, int]:
     sof = unpacked[0]
     if sof != SOF:
         raise ProtocolError(f"反馈帧头错误：{sof:#06x}")
-    values = unpacked[1:-1]
-    flags = unpacked[-1]
+    values = unpacked[1:]
     if not all(math.isfinite(value) for value in values):
         raise ProtocolError("反馈帧包含 NaN 或无穷大。")
-    return Feedback(*values, flags), FEEDBACK_SIZE
+    return Feedback(*values), FEEDBACK_SIZE

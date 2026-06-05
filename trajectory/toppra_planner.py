@@ -9,7 +9,7 @@ import toppra.constraint as constraint
 
 from .densify import compute_path_s, deduplicate_waypoints, densify_segments
 from .smoothing import find_corner_windows, smooth_corners
-from .types import ToppraResult, TrajectoryError, Waypoint
+from .types import TrajectoryError, Waypoint
 
 DEFAULT_SAMPLE_FREQ_HZ = 200.0
 DEFAULT_MAX_STEP = 0.05
@@ -77,9 +77,8 @@ class ToppraPlanner:
         self,
         waypoints: list[Waypoint],
         *,
-        sample_freq: float = DEFAULT_SAMPLE_FREQ_HZ,
         max_step: float = DEFAULT_MAX_STEP,
-    ) -> ToppraResult:
+    ):
         """生成带时间戳、速度和加速度的轨迹点。"""
 
         if len(waypoints) < 2:
@@ -111,26 +110,7 @@ class ToppraPlanner:
         if trajectory is None:
             raise TrajectoryError("TOPPRA 未能生成可行轨迹。")
 
-        if sample_freq <= 0.0:
-            raise TrajectoryError("sample_freq 必须大于 0。")
-        dt = 1.0 / sample_freq
-        num_samples = max(2, int(np.floor(trajectory.duration / dt)) + 1)
-        t_grid = np.linspace(0.0, trajectory.duration, num_samples)
-        q = trajectory(t_grid)
-        dq = trajectory(t_grid, 1)
-        ddq = trajectory(t_grid, 2)
-        meta = _sample_meta(waypoints, waypoint_qs, t_grid, q)
-
-        return ToppraResult(
-            duration=float(trajectory.duration),
-            t=t_grid,
-            q=q,
-            dq=dq,
-            ddq=ddq,
-            meta=meta,
-            path_qs=path_qs,
-            path_s=path_s,
-        )
+        return trajectory
 
     def _check_waypoints(self, waypoints: list[Waypoint]) -> None:
         expected_dim = len(waypoints[0].q)

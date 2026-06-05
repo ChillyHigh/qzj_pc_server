@@ -3,9 +3,8 @@ from __future__ import annotations
 import math
 from itertools import product
 
-import numpy as np
-
-from .types import ArmKinematicsError, ArmSolution, FiveBarParams
+from . import config
+from .types import ArmKinematicsError, FiveBarParams
 
 
 def _circle_intersections(
@@ -39,60 +38,241 @@ def _circle_intersections(
     return (px + rx, py + ry), (px - rx, py - ry)
 
 
-def _elbow_q(
-    motor_x: float,
-    motor_y: float,
-    elbow_x: float,
-    elbow_y: float,
-    params: FiveBarParams,
-) -> float | None:
-    q = math.atan2(motor_x - elbow_x, elbow_y - motor_y)
+def _upper_elbow_from_q(motor: tuple[float, float], active_link: float, q: float) -> tuple[float, float]:
+    return (
+        motor[0] + active_link * math.sin(q),
+        motor[1] - active_link * math.cos(q),
+    )
+
+
+def _lower_elbow_from_q(motor: tuple[float, float], active_link: float, q: float) -> tuple[float, float]:
+    return (
+        motor[0] - active_link * math.sin(q),
+        motor[1] + active_link * math.cos(q),
+    )
+
+
+def _upper_elbow_q(elbow_x: float, elbow_y: float, motor_x: float, motor_y: float, params: FiveBarParams) -> float | None:
+    q = _normalize_q(math.atan2(elbow_x - motor_x, motor_y - elbow_y))
     if params.q_min - 1e-9 <= q <= params.q_max + 1e-9:
         return min(max(q, params.q_min), params.q_max)
     return None
+
+
+def _lower_elbow_q(elbow_x: float, elbow_y: float, motor_x: float, motor_y: float, params: FiveBarParams) -> float | None:
+    q = _normalize_q(math.atan2(motor_x - elbow_x, elbow_y - motor_y))
+    if params.q_min - 1e-9 <= q <= params.q_max + 1e-9:
+        return min(max(q, params.q_min), params.q_max)
+    return None
+
+
+def _normalize_q(q: float) -> float:
+    normalized = q % (2.0 * math.pi)
+    if math.isclose(normalized, 2.0 * math.pi, abs_tol=1e-12):
+        return 0.0
+    return normalized
+
+
+def _wrap_pi(angle: float) -> float:
+    return (angle + math.pi) % (2.0 * math.pi) - math.pi
+
+
+def _wrap_2pi(angle: float) -> float:
+    return angle % (2.0 * math.pi)
 
 
 def _angle_distance(a: float, b: float) -> float:
     return abs(math.atan2(math.sin(a - b), math.cos(a - b)))
 
 
+def _line_y_at_x(line_a: tuple[float, float], line_b: tuple[float, float], x: float) -> float | None:
+    dx = line_b[0] - line_a[0]
+    if abs(dx) <= 1e-9:
+        return None
+    return line_a[1] + (line_b[1] - line_a[1]) * (x - line_a[0]) / dx
+
+
+def _elbow_outward(
+    motor: tuple[float, float],
+    elbow: tuple[float, float],
+    endpoint: tuple[float, float],
+) -> bool:
+    line_y = _line_y_at_x(motor, endpoint, elbow[0])
+    if line_y is None:
+        if abs(elbow[0] - motor[0]) > 1e-9:
+            return False
+        if motor[1] > 0.0:
+            return elbow[1] >= motor[1] - 1e-9
+        return elbow[1] <= motor[1] + 1e-9
+    if motor[1] > 0.0:
+        return elbow[1] >= line_y - 1e-9
+    return elbow[1] <= line_y + 1e-9
+
+
+def _elbows_outward(
+    upper_motor: tuple[float, float],
+    lower_motor: tuple[float, float],
+    upper_elbow: tuple[float, float],
+    lower_elbow: tuple[float, float],
+    endpoint: tuple[float, float],
+) -> bool:
+    return (
+        _elbow_outward(upper_motor, upper_elbow, endpoint)
+        and _elbow_outward(lower_motor, lower_elbow, endpoint)
+    )
+
+
+def _matches_outward_branch(q1: float, q2: float, endpoint: tuple[float, float]) -> bool:
+    q_delta = q2 - q1
+    if abs(q_delta) > 1e-9 and endpoint[0] * q_delta < -1e-9:
+        return False
+    y_delta = (q1 + q2 - 2.0 * math.pi) * q_delta
+    if abs(y_delta) > 1e-9 and endpoint[1] * y_delta < -1e-9:
+        return False
+    return True
+
+
+def _check_q(params: FiveBarParams, q: float, name: str) -> None:
+    if not math.isfinite(q):
+        raise ArmKinematicsError(f"{name} 不是有限值：{q}")
+    if not (params.q_min <= q <= params.q_max):
+        raise ArmKinematicsError(
+            f"{name} 超出范围 [{params.q_min:.4f}, {params.q_max:.4f}]：{q:.4f}"
+        )
+
+
+def _check_ik_margin(
+    x: float,
+    y: float,
+    params: FiveBarParams,
+    upper_motor: tuple[float, float],
+    lower_motor: tuple[float, float],
+) -> None:
+    outer = params.passive_link + params.active_link
+    margin = config.IK_DISTANCE_MARGIN
+    max_dist = outer - margin
+    if max_dist <= 0.0:
+        raise ArmKinematicsError(
+            f"IK_DISTANCE_MARGIN 过大：outer={outer:.4f}, margin={margin:.4f}"
+        )
+    for name, motor in (("upper", upper_motor), ("lower", lower_motor)):
+        dist = math.hypot(x - motor[0], y - motor[1])
+        if dist > max_dist:
+            raise ArmKinematicsError(
+                f"末端点距离 {name} 电机过远：dist={dist:.4f}, "
+                f"max={max_dist:.4f}, x={x:.4f}, y={y:.4f}"
+            )
+
+
+def _inverse_options(
+    x: float,
+    y: float,
+    params: FiveBarParams,
+    upper_motor: tuple[float, float],
+    lower_motor: tuple[float, float],
+) -> tuple[tuple[float, float, tuple[float, float], tuple[float, float]], ...]:
+    _check_ik_margin(x, y, params, upper_motor, lower_motor)
+    upper_elbows = _circle_intersections(
+        upper_motor[0],
+        upper_motor[1],
+        params.active_link,
+        x,
+        y,
+        params.passive_link,
+    )
+    lower_elbows = _circle_intersections(
+        lower_motor[0],
+        lower_motor[1],
+        params.active_link,
+        x,
+        y,
+        params.passive_link,
+    )
+
+    solutions: list[tuple[float, float, tuple[float, float], tuple[float, float]]] = []
+    for upper_elbow, lower_elbow in product(upper_elbows, lower_elbows):
+        endpoint = (x, y)
+        if not _elbows_outward(upper_motor, lower_motor, upper_elbow, lower_elbow, endpoint):
+            continue
+        q1 = _upper_elbow_q(
+            upper_elbow[0],
+            upper_elbow[1],
+            upper_motor[0],
+            upper_motor[1],
+            params,
+        )
+        q2 = _lower_elbow_q(
+            lower_elbow[0],
+            lower_elbow[1],
+            lower_motor[0],
+            lower_motor[1],
+            params,
+        )
+        if q1 is not None and q2 is not None:
+            solutions.append((q1, q2, upper_elbow, lower_elbow))
+
+    if not solutions:
+        raise ArmKinematicsError(f"末端点不可达：x={x:.4f}, y={y:.4f}")
+    return tuple(solutions)
+
+
+def _select_endpoint(
+    q1: float,
+    q2: float,
+    endpoints: tuple[tuple[float, float], tuple[float, float]],
+    upper_motor: tuple[float, float],
+    lower_motor: tuple[float, float],
+    upper_elbow: tuple[float, float],
+    lower_elbow: tuple[float, float],
+) -> tuple[float, float]:
+    compatible = [
+        endpoint for endpoint in endpoints
+        if _elbows_outward(upper_motor, lower_motor, upper_elbow, lower_elbow, endpoint)
+        and _matches_outward_branch(q1, q2, endpoint)
+    ]
+    if not compatible:
+        raise ArmKinematicsError("FK 未找到满足肘朝外约束的闭链分支。")
+    if len(compatible) > 1:
+        first = compatible[0]
+        if all(math.hypot(point[0] - first[0], point[1] - first[1]) <= 1e-9 for point in compatible[1:]):
+            return first
+        raise ArmKinematicsError("FK 肘朝外约束没有唯一闭链分支。")
+    return compatible[0]
+
+
 class FiveBarKinematics:
-    """五连杆平面正逆运动学。
+    """五连杆平面运动学。
 
-    约定：
-    - 机器人局部坐标中，x 向右，y 向前/向上。
-    - q=0 时主动杆指向局部 +y。
-    - q 正方向与 yaw 一致，为逆时针，因此 q>0 时主动杆端点向 -x 转。
+    对外契约只有：
+    - `ik(x, y, yaw) -> (q1, q2, gripper_yaw)`
+    - `fk(q1, q2, gripper_yaw) -> (x, y, yaw)`
 
-    五连杆对同一个末端点可能存在多组 q1/q2 解。轨迹规划应调用
-    `ik_path` 并传入上一帧 q 作为参考，保证解在连续轨迹中不跳支。
+    `x/y/yaw` 使用 arm 局部、与底盘对齐的坐标系；`yaw` 相对底盘。
+    执行帧中的 `gripper_yaw=0` 表示夹爪相对 y<0 下侧从动杆反向。
     """
 
     def __init__(self, params: FiveBarParams | None = None) -> None:
-        """创建五连杆模型。
-
-        Args:
-            params: 机构几何参数；为 None 时使用当前比赛车的默认尺寸。
-        """
-
         self.params = params or FiveBarParams()
         self.upper_motor = (self.params.motor_x, self.params.motor_y_offset)
         self.lower_motor = (self.params.motor_x, -self.params.motor_y_offset)
 
-    def forward_all(self, q1: float, q2: float) -> tuple[ArmSolution, ...]:
-        """返回给定 q1/q2 下所有可能的末端闭链解。"""
-
-        self._check_q(q1, "q1")
-        self._check_q(q2, "q2")
-
-        upper_elbow = (
-            self.upper_motor[0] - self.params.active_link * math.sin(q1),
-            self.upper_motor[1] + self.params.active_link * math.cos(q1),
+    def ik(self, x: float, y: float, yaw: float) -> tuple[float, float, float]:
+        options = _inverse_options(x, y, self.params, self.upper_motor, self.lower_motor)
+        q1, q2, _, lower_elbow = min(
+            options,
+            key=lambda option: (
+                _angle_distance(option[0], math.radians(210.0))
+                + _angle_distance(option[1], math.radians(210.0))
+            ),
         )
-        lower_elbow = (
-            self.lower_motor[0] - self.params.active_link * math.sin(q2),
-            self.lower_motor[1] + self.params.active_link * math.cos(q2),
-        )
+        lower_passive_yaw = math.atan2(y - lower_elbow[1], x - lower_elbow[0])
+        return q1, q2, _wrap_2pi(yaw - lower_passive_yaw - math.pi)
+
+    def fk(self, q1: float, q2: float, gripper_yaw: float) -> tuple[float, float, float]:
+        _check_q(self.params, q1, "q1")
+        _check_q(self.params, q2, "q2")
+        upper_elbow = _upper_elbow_from_q(self.upper_motor, self.params.active_link, q1)
+        lower_elbow = _lower_elbow_from_q(self.lower_motor, self.params.active_link, q2)
         endpoints = _circle_intersections(
             upper_elbow[0],
             upper_elbow[1],
@@ -101,194 +281,15 @@ class FiveBarKinematics:
             lower_elbow[1],
             self.params.passive_link,
         )
-        return tuple(
-            ArmSolution(q1, q2, upper_elbow, lower_elbow, endpoint)
-            for endpoint in endpoints
+        endpoint = _select_endpoint(
+            q1,
+            q2,
+            endpoints,
+            self.upper_motor,
+            self.lower_motor,
+            upper_elbow,
+            lower_elbow,
         )
 
-    def forward(
-        self,
-        q1: float,
-        q2: float,
-        *,
-        reference_endpoint: tuple[float, float] | None = None,
-    ) -> ArmSolution:
-        """返回一组正运动学解。
-
-        Args:
-            q1: 上侧主动杆角度，rad。
-            q2: 下侧主动杆角度，rad。
-            reference_endpoint: 如果给出，则选择离该末端点最近的闭链解。
-        """
-
-        options = self.forward_all(q1, q2)
-        if reference_endpoint is not None:
-            return min(
-                options,
-                key=lambda solution: (
-                    (solution.endpoint[0] - reference_endpoint[0]) ** 2
-                    + (solution.endpoint[1] - reference_endpoint[1]) ** 2
-                ),
-            )
-        return max(options, key=lambda solution: solution.endpoint[0])
-
-    def inverse_all(self, endpoint: tuple[float, float]) -> tuple[ArmSolution, ...]:
-        """返回目标末端点的所有可行 IK 解。"""
-
-        upper_elbows = _circle_intersections(
-            self.upper_motor[0],
-            self.upper_motor[1],
-            self.params.active_link,
-            endpoint[0],
-            endpoint[1],
-            self.params.passive_link,
-        )
-        lower_elbows = _circle_intersections(
-            self.lower_motor[0],
-            self.lower_motor[1],
-            self.params.active_link,
-            endpoint[0],
-            endpoint[1],
-            self.params.passive_link,
-        )
-
-        solutions: list[ArmSolution] = []
-        for upper_elbow, lower_elbow in product(upper_elbows, lower_elbows):
-            q1 = _elbow_q(self.upper_motor[0], self.upper_motor[1], upper_elbow[0], upper_elbow[1], self.params)
-            q2 = _elbow_q(self.lower_motor[0], self.lower_motor[1], lower_elbow[0], lower_elbow[1], self.params)
-            if q1 is None or q2 is None:
-                continue
-            solutions.append(ArmSolution(q1, q2, upper_elbow, lower_elbow, endpoint))
-
-        if not solutions:
-            raise ArmKinematicsError(f"末端点不可达：x={endpoint[0]:.4f}, y={endpoint[1]:.4f}")
-        return tuple(solutions)
-
-    def inverse(
-        self,
-        endpoint: tuple[float, float],
-        *,
-        reference_q: tuple[float, float] | None = None,
-        preferred_q: tuple[float, float] = (math.radians(30.0), math.radians(150.0)),
-    ) -> ArmSolution:
-        """选择目标末端点的一组 IK 解。
-
-        Args:
-            endpoint: 目标末端点，单位 m。
-            reference_q: 上一帧或当前帧 q；给出后优先选择角度变化最小的解。
-            preferred_q: 无参考 q 时的默认偏好构型。
-        """
-
-        options = self.inverse_all(endpoint)
-        if reference_q is not None:
-            return min(
-                options,
-                key=lambda solution: (
-                    _angle_distance(solution.q1, reference_q[0])
-                    + _angle_distance(solution.q2, reference_q[1])
-                ),
-            )
-        return min(
-            options,
-            key=lambda solution: (
-                _angle_distance(solution.q1, preferred_q[0])
-                + _angle_distance(solution.q2, preferred_q[1])
-            ),
-        )
-
-    def ik_xy(
-        self,
-        x: float,
-        y: float,
-        *,
-        reference_q: tuple[float, float] | None = None,
-        preferred_q: tuple[float, float] = (math.radians(30.0), math.radians(150.0)),
-    ) -> tuple[float, float]:
-        """用标量坐标求 IK，返回 `(q1, q2)`。
-
-        这是 arm 轨迹构造的热路径接口，不创建 `ArmSolution` 对象。
-        """
-
-        options = self._inverse_xy_options(x, y)
-        if reference_q is not None:
-            return min(
-                options,
-                key=lambda q: _angle_distance(q[0], reference_q[0]) + _angle_distance(q[1], reference_q[1]),
-            )
-        return min(
-            options,
-            key=lambda q: _angle_distance(q[0], preferred_q[0]) + _angle_distance(q[1], preferred_q[1]),
-        )
-
-    def ik_path(
-        self,
-        points_xy: np.ndarray,
-        *,
-        initial_q: tuple[float, float] | None = None,
-    ) -> np.ndarray:
-        """对 `Nx2` 末端点数组做连续 IK，返回 `Nx2` 的 q1/q2 数组。
-
-        这是规划层生成 arm 航点的主接口。它复用上一点的 q 选解，
-        避免五连杆从一个半平面跳到另一个半平面。
-        """
-
-        points = np.asarray(points_xy, dtype=float)
-        if points.ndim != 2 or points.shape[1] != 2:
-            raise ArmKinematicsError("points_xy 必须是形状为 Nx2 的数组。")
-        result = np.empty((len(points), 2), dtype=float)
-        reference_q = initial_q
-        for idx, (x, y) in enumerate(points):
-            q = self.ik_xy(float(x), float(y), reference_q=reference_q)
-            result[idx, 0] = q[0]
-            result[idx, 1] = q[1]
-            reference_q = q
-        return result
-
-    def _check_q(self, q: float, name: str) -> None:
-        if not math.isfinite(q):
-            raise ArmKinematicsError(f"{name} 不是有限值：{q}")
-        if not (self.params.q_min <= q <= self.params.q_max):
-            raise ArmKinematicsError(
-                f"{name} 超出范围 [{self.params.q_min:.4f}, {self.params.q_max:.4f}]：{q:.4f}"
-            )
-
-    def _inverse_xy_options(self, x: float, y: float) -> tuple[tuple[float, float], ...]:
-        upper_elbows = _circle_intersections(
-            self.upper_motor[0],
-            self.upper_motor[1],
-            self.params.active_link,
-            x,
-            y,
-            self.params.passive_link,
-        )
-        lower_elbows = _circle_intersections(
-            self.lower_motor[0],
-            self.lower_motor[1],
-            self.params.active_link,
-            x,
-            y,
-            self.params.passive_link,
-        )
-
-        solutions: list[tuple[float, float]] = []
-        for upper_elbow, lower_elbow in product(upper_elbows, lower_elbows):
-            q1 = _elbow_q(
-                self.upper_motor[0],
-                self.upper_motor[1],
-                upper_elbow[0],
-                upper_elbow[1],
-                self.params,
-            )
-            q2 = _elbow_q(
-                self.lower_motor[0],
-                self.lower_motor[1],
-                lower_elbow[0],
-                lower_elbow[1],
-                self.params,
-            )
-            if q1 is not None and q2 is not None:
-                solutions.append((q1, q2))
-
-        if not solutions:
-            raise ArmKinematicsError(f"末端点不可达：x={x:.4f}, y={y:.4f}")
-        return tuple(solutions)
+        lower_passive_yaw = math.atan2(endpoint[1] - lower_elbow[1], endpoint[0] - lower_elbow[0])
+        return endpoint[0], endpoint[1], _wrap_pi(lower_passive_yaw + gripper_yaw + math.pi)

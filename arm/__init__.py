@@ -1,9 +1,14 @@
 from .five_bar import FiveBarKinematics
-from .types import ArmKinematicsError, ArmSolution, FiveBarParams
+from .path_generator import grip_lift, move, prepare_pick
+from .toppra_planner import ArmPathError
+from .types import ArmKinematicsError, FiveBarParams
 
 __all__ = [
     "ArmKinematicsError",
-    "ArmSolution",
+    "ArmPathError",
     "FiveBarKinematics",
     "FiveBarParams",
+    "grip_lift",
+    "move",
+    "prepare_pick",
 ]

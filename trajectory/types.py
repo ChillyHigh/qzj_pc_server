@@ -27,30 +27,5 @@ class Waypoint:
     source_id: int | None = None
     blend_single: bool = False
 
-
-@dataclass(frozen=True, slots=True)
-class ToppraResult:
-    """TOPPRA 规划结果。
-
-    duration 为整段轨迹时长；t/q/dq/ddq 是按时间采样好的数组。
-    这里不保存逐点对象，避免执行层发送前产生大量对象。
-    """
-
-    duration: float
-    t: np.ndarray
-    q: np.ndarray
-    dq: np.ndarray
-    ddq: np.ndarray
-    meta: list[dict[str, Any]]
-    path_qs: np.ndarray
-    path_s: np.ndarray
-
-    @property
-    def point_count(self) -> int:
-        """返回采样点数量。"""
-
-        return int(len(self.t))
-
-
 class TrajectoryError(ValueError):
     """轨迹生成失败、约束不一致或路径不可行。"""

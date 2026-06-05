@@ -8,29 +8,18 @@ from dataclasses import dataclass
 class FiveBarParams:
     """五连杆几何参数。
 
-    q1/q2 范围为 [-pi, pi]；q=0 时主动杆指向机器人局部 +y。
+    arm path API 使用五连杆局部坐标：两电机中心线为 x=0，
+    上下电机中点为 y=0。不要混用底盘或 MuJoCo 场景坐标。
+    q1/q2 范围为 [0, 2pi]。上侧电机 q1=0 指向局部 -y；
+    下侧电机 q2=0 指向局部 +y。
     """
 
-    motor_x: float = 0.110
+    motor_x: float = 0.0
     motor_y_offset: float = 0.080
     active_link: float = 0.160
     passive_link: float = 0.240
-    q_min: float = -math.pi
-    q_max: float = math.pi
-
-
-@dataclass(frozen=True, slots=True)
-class ArmSolution:
-    """五连杆一组完整构型解。
-
-    endpoint 是夹爪末端在机器人局部平面内的位置，格式为 `(x, y)`。
-    """
-
-    q1: float
-    q2: float
-    upper_elbow: tuple[float, float]
-    lower_elbow: tuple[float, float]
-    endpoint: tuple[float, float]
+    q_min: float = 0.0
+    q_max: float = 2.0 * math.pi
 
 
 class ArmKinematicsError(ValueError):
