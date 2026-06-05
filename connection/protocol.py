@@ -24,7 +24,10 @@ class ProtocolError(ValueError):
 
 @dataclass(frozen=True, slots=True)
 class Feedback:
-    """下位机或 MuJoCo 桥接反馈。"""
+    """下位机或 MuJoCo 桥接反馈。
+
+    x/y/yaw 使用四主动轮对角线交点。
+    """
 
     x: float
     y: float
@@ -51,7 +54,10 @@ def pack_frame(
     dq2: float,
     flags: int,
 ) -> bytes:
-    """打包统一控制帧。"""
+    """打包统一控制帧。
+
+    x/y/yaw 使用四主动轮对角线交点。
+    """
 
     values = (
         x,

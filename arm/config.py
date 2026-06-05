@@ -12,21 +12,19 @@ GRIPPER_YAW_MIN = 0.0
 GRIPPER_YAW_MAX = 2.0 * math.pi
 GRIPPER_OPENING_MIN = 0.0
 GRIPPER_OPENING_MAX = math.radians(150.0)
+GRIPPER_YAW_SERVO_V_LIMIT = math.radians(180.0)
+GRIPPER_OPENING_SERVO_V_LIMIT = math.radians(220.0)
 IK_DISTANCE_MARGIN = 0.005
 
-V_LIMIT = (
+MOTION_V_LIMIT = (
     0.45,
     math.radians(180.0),
     math.radians(180.0),
-    math.radians(180.0),
-    math.radians(220.0),
 )
-A_LIMIT = (
+MOTION_A_LIMIT = (
     1.0,
     math.radians(360.0),
     math.radians(360.0),
-    math.radians(360.0),
-    math.radians(440.0),
 )
 Q_MIN_LIMIT = (H_MIN, Q_MIN, Q_MIN, GRIPPER_YAW_MIN, GRIPPER_OPENING_MIN)
 Q_MAX_LIMIT = (H_MAX, Q_MAX, Q_MAX, GRIPPER_YAW_MAX, GRIPPER_OPENING_MAX)

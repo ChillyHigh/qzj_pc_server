@@ -118,6 +118,44 @@ def prepare_pick(
     return plan_joint_waypoints(waypoints)
 
 
+def set_gripper(state: EndEffectorState, opening: float) -> AbstractGeometricPath:
+    """保持末端位姿，只改变夹爪开合角。
+
+    state 是 arm 局部末端笛卡尔状态
+    `(x, y, gripper_yaw, h, gripper_opening)`，opening 是目标开合角。
+    """
+
+    kin = FiveBarKinematics()
+    q1, q2, gripper_yaw = kin.ik(state[0], state[1], state[2])
+    waypoints = [
+        Waypoint(
+            q=(
+                state[3],
+                q1,
+                q2,
+                gripper_yaw,
+                state[4],
+            ),
+            speed_scale=1.0,
+            source_kind="point",
+            source_id=0,
+        ),
+        Waypoint(
+            q=(
+                state[3],
+                q1,
+                q2,
+                gripper_yaw,
+                opening,
+            ),
+            speed_scale=1.0,
+            source_kind="point",
+            source_id=0,
+        ),
+    ]
+    return plan_joint_waypoints(waypoints)
+
+
 def _half_plane_guide_waypoints(
     start: EndEffectorState,
     end: EndEffectorState,

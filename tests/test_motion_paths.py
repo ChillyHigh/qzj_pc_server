@@ -38,18 +38,67 @@ class MotionPathTest(unittest.TestCase):
         self.assertAlmostEqual(float(path(path.duration, order=0)[0]), 0.32, places=6)
         self.assertAlmostEqual(float(path(path.duration, order=0)[4]), 0.5, places=6)
 
+    def test_arm_servo_targets_do_not_constrain_toppra(self) -> None:
+        start = (0.055, 0.0, 0.0, 0.30, 1.0)
+        same_motion_small_servo = (0.08, 0.0, 0.0, 0.32, 0.9)
+        same_motion_large_servo = (0.08, 0.0, 0.0, 0.32, 0.0)
+
+        path_small = arm.move(start, same_motion_small_servo, 1.0)
+        path_large = arm.move(start, same_motion_large_servo, 1.0)
+
+        self.assertAlmostEqual(path_small.duration, path_large.duration, places=6)
+        dq = np.asarray(path_large(path_large.duration / 2.0, order=1), dtype=float)
+        self.assertEqual(dq.shape, (5,))
+        np.testing.assert_allclose(dq[3:], (0.0, 0.0), atol=1e-9)
+
+    def test_arm_servo_only_change_keeps_kind_busy_until_servo_can_arrive(self) -> None:
+        path = arm.grip_lift((0.24, 5.8, 3.8, 0.0, 1.0), 0.0, 1.0)
+        servo_only = arm.move((0.055, 0.0, 0.0, 0.30, 1.0), (0.055, 0.0, 0.0, 0.30, 0.0), 1.0)
+
+        self.assertGreater(path.duration, 0.0)
+        self.assertAlmostEqual(
+            servo_only.duration,
+            1.0 / arm_config.GRIPPER_OPENING_SERVO_V_LIMIT,
+            places=6,
+        )
+        np.testing.assert_allclose(servo_only(0.0, order=1), (0.0, 0.0, 0.0, 0.0, 0.0), atol=1e-9)
+        self.assertAlmostEqual(float(servo_only(0.0, order=0)[4]), 0.0, places=6)
+
+    def test_arm_set_gripper_keeps_end_effector_pose_and_changes_opening(self) -> None:
+        state = (0.055, 0.0, 0.0, 0.30, 1.0)
+        path = arm.set_gripper(state, 0.0)
+        kin = arm.FiveBarKinematics()
+        q1, q2, gripper_yaw = kin.ik(state[0], state[1], state[2])
+
+        self.assertEqual(np.asarray(path(0.0, order=0)).shape, (5,))
+        np.testing.assert_allclose(path(0.0, order=0)[:4], (state[3], q1, q2, gripper_yaw), atol=1e-6)
+        np.testing.assert_allclose(path(path.duration, order=0)[:4], (state[3], q1, q2, gripper_yaw), atol=1e-6)
+        self.assertAlmostEqual(float(path(0.0, order=0)[4]), 0.0, places=6)
+        self.assertAlmostEqual(
+            path.duration,
+            1.0 / arm_config.GRIPPER_OPENING_SERVO_V_LIMIT,
+            places=6,
+        )
+
     def test_arm_move_converts_chassis_relative_gripper_yaw_to_lower_passive_link_frame(self) -> None:
         chassis_relative_yaw = 0.0
         start = (0.08, 0.0, chassis_relative_yaw, 0.30, 1.0)
-        path = arm.move(start, (0.055, 0.0, 0.0, 0.32, 0.5), 1.0)
+        end = (0.055, 0.0, 0.0, 0.32, 0.5)
+        path = arm.move(start, end, 1.0)
         kin = arm.FiveBarKinematics()
-        q1, q2, expected = kin.ik(start[0], start[1], chassis_relative_yaw)
-        x, y, yaw = kin.fk(q1, q2, expected)
+        q1, q2, start_servo_target = kin.ik(start[0], start[1], chassis_relative_yaw)
+        end_q1, end_q2, end_servo_target = kin.ik(end[0], end[1], end[2])
+        x, y, yaw = kin.fk(q1, q2, start_servo_target)
+        end_x, end_y, end_yaw = kin.fk(end_q1, end_q2, end_servo_target)
 
-        self.assertAlmostEqual(float(path(0.0, order=0)[3]), expected, places=6)
+        np.testing.assert_allclose(path(0.0, order=0)[:3], (start[3], q1, q2), atol=1e-6)
+        self.assertAlmostEqual(float(path(0.0, order=0)[3]), end_servo_target, places=6)
         self.assertAlmostEqual(x, start[0], places=6)
         self.assertAlmostEqual(y, start[1], places=6)
         self.assertAlmostEqual(yaw, chassis_relative_yaw, places=6)
+        self.assertAlmostEqual(end_x, end[0], places=6)
+        self.assertAlmostEqual(end_y, end[1], places=6)
+        self.assertAlmostEqual(end_yaw, end[2], places=6)
 
     def test_arm_ik_fk_round_trip_with_outward_elbow_branch(self) -> None:
         kin = arm.FiveBarKinematics()

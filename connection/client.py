@@ -12,7 +12,10 @@ from .protocol import Feedback, pack_frame, parse_feedback
 
 @dataclass(frozen=True, slots=True)
 class MachineState:
-    """执行层维护的最近目标状态。"""
+    """执行层维护的最近目标状态。
+
+    x/y/yaw 使用四主动轮对角线交点。
+    """
 
     x: float = 0.3
     y: float = 0.0

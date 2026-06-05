@@ -43,9 +43,8 @@ def densify_and_smooth(
 class ToppraPlanner:
     """多维广义坐标的 TOPPRA 时间最优轨迹规划器。
 
-    底盘可传入 q=(x,y,yaw)，arm 可传入
-    q=(h,q1,q2,gripper_yaw,gripper_opening)。每一维允许单位不同，
-    但对应的 vlim/alim 必须使用同一维度自己的物理单位。
+    底盘可传入 q=(x,y,yaw)。每一维允许单位不同，但对应的
+    vlim/alim 必须使用同一维度自己的物理单位。
     """
 
     def __init__(
