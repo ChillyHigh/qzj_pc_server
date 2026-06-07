@@ -4,17 +4,21 @@ import numpy as np
 
 from connection import FLAG_LOWER_FUNNEL_OPEN, FLAG_UPPER_FUNNEL_OPEN
 
+from . import config
+
 
 class FunnelPathError(ValueError):
     """漏斗 flags path 生成失败。"""
 
 
 class _FlagsPath:
-    def __init__(self, flags: int) -> None:
+    def __init__(self, flags: int, duration: float) -> None:
         if not 0 <= flags <= FLAG_UPPER_FUNNEL_OPEN | FLAG_LOWER_FUNNEL_OPEN:
             raise FunnelPathError(f"flags 只能包含上下漏斗开关位：{flags}")
         self.flags = int(flags)
-        self.duration = 0.0
+        self.duration = float(duration)
+        if self.duration < 0.0:
+            raise FunnelPathError(f"flags path duration 不能小于 0：{self.duration}")
 
     def __call__(self, path_positions, order: int = 0):
         if order == 0:
@@ -35,7 +39,8 @@ def set(upper_open: bool, lower_open: bool) -> _FlagsPath:
         flags |= FLAG_UPPER_FUNNEL_OPEN
     if lower_open:
         flags |= FLAG_LOWER_FUNNEL_OPEN
-    return _FlagsPath(flags)
+    duration = config.OPEN_DURATION if flags != 0 else 0.0
+    return _FlagsPath(flags, duration)
 
 
 def upper(open: bool) -> _FlagsPath:

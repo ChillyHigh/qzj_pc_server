@@ -6,6 +6,10 @@ dist/
 wheels/
 *.egg-info
 
+debug_outputs/
+
+dag.png
+
 # Virtual environments
 .venv
 

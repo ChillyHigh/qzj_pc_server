@@ -3,54 +3,57 @@ from __future__ import annotations
 import math
 from typing import Literal
 
+from plan.setting import (  # 场地物理常量（chassis 也可引用）
+    ARM_ORIGIN_IN_CHASSIS_CENTER,
+    ARM_X,
+    ARM_Y,
+    CHASSIS_CENTER_FROM_DRIVE,
+    CHASSIS_HALF_X_FRONT,
+    CHASSIS_HALF_X_REAR,
+    CHASSIS_HALF_Y,
+    CHASSIS_LENGTH,
+    CHASSIS_WIDTH,
+    DRIVE_X,
+    DRIVE_Y,
+    DRIVE_YAW,
+    GRIPPER_YAW,
+    H,
+    OBSTACLE_CENTERS,
+    OBSTACLE_RADIUS,
+    TARGET_CENTER,
+    TARGET_HALF_SIZE,
+    TARGET_RECTS,
+    TargetRect,
+)
+
+# ---- 比赛类型 ---------------------------------------------------------------
 
 DropCarrier = Literal["upper_funnel", "lower_funnel", "gripper"]
 
 Pose = tuple[float, float, float, float, float, float, float]
-TargetRect = tuple[tuple[float, float], tuple[float, float]]
 
-DRIVE_X = 0
-DRIVE_Y = 1
-DRIVE_YAW = 2
-ARM_X = 3
-ARM_Y = 4
-GRIPPER_YAW = 5
-H = 6
+# ---- 高度常量 ---------------------------------------------------------------
 
-TARGET_CENTER = 0
-TARGET_HALF_SIZE = 1
+PICKUP_H = 0.4
+GRIPPER_DROP_H = 0.3
+FUNNEL_POSE_H = 0.3
 
-CHASSIS_CENTER_FROM_DRIVE = (0.035, 0.0)
-CHASSIS_LENGTH = 0.360
-CHASSIS_WIDTH = 0.670
-ARM_ORIGIN_IN_CHASSIS_CENTER = (-0.110, 0.0)
-
-OBSTACLE_RADIUS = 0.051
-OBSTACLE_CENTERS = ((-1.000, 0.000), (1.000, 0.000))
-
-PICKUP_H = 0.0
-GRIPPER_DROP_H = 0.0
-FUNNEL_POSE_H = 0.0
+# ---- 漏斗几何 ---------------------------------------------------------------
 
 FUNNEL_EDGE_IN_CHASSIS_CENTER_X = 0.070
 UPPER_FUNNEL_EDGE_IN_CHASSIS_CENTER_Y = 0.365
 LOWER_FUNNEL_EDGE_IN_CHASSIS_CENTER_Y = -0.365
 
-TARGET_RECTS: dict[int, TargetRect] = {
-    1: ((-1.855, 0.500), (0.105, 0.150)),
-    2: ((-1.855, -0.500), (0.105, 0.150)),
-    3: ((-1.600, 0.000), (0.105, 0.150)),
-    4: ((1.640, 0.875), (0.150, 0.105)),
-    5: ((1.875, 0.400), (0.105, 0.150)),
-    6: ((1.875, 0.000), (0.105, 0.150)),
-    7: ((1.875, -0.400), (0.105, 0.150)),
-    8: ((1.640, -0.875), (0.150, 0.105)),
-}
+# ---- 预设姿态 ---------------------------------------------------------------
 
+豆子厚度 = 0.05
+
+货箱高 = 0.15
+#  x, y, yaw, x, y, g_y, h
 PICKUP_POSES: dict[int, Pose] = {
-    1: (-1.480, 0.500, 0.0, -0.300, 0.0, 0.0, PICKUP_H),
-    2: (-1.480, -0.500, 0.0, -0.300, 0.0, 0.0, PICKUP_H),
-    3: (-1.315, 0.000, 0.0, -0.210, 0.0, 0.0, PICKUP_H),
+    1: (-1.480, 0.500, 0.0, -0.300, 0.0, 0.0, 0.1),
+    2: (-1.480, -0.500, 0.0, -0.300, 0.0, 0.0, 0.05),
+    3: (-1.300, 0.000, 0.0, -0.225, 0.0, 0.0, 0.15),
 }
 
 FUNNEL_DROP_BOX_EDGE_POINTS: dict[int, dict[DropCarrier, tuple[float, float]]] = {
@@ -80,26 +83,53 @@ DROP_POSES: dict[int, dict[DropCarrier, Pose]] = {
     4: {
         "upper_funnel": (1.535, 0.405, 0.0, 0.0, 0.0, 0.0, FUNNEL_POSE_H),
         "lower_funnel": (1.125, 0.770, math.pi / 2.0, 0.0, 0.0, 0.0, FUNNEL_POSE_H),
-        "gripper": (1.374835, 0.609835, math.radians(225.0), -0.300, 0.0, math.radians(45.0), GRIPPER_DROP_H),
+        "gripper": (1.360693, 0.595693, math.radians(225.0), -0.320, 0.0, math.radians(45.0), GRIPPER_DROP_H),
     },
     5: {
-        "upper_funnel": (1.405, 0.505, -math.pi / 2.0, 0.0, 0.0, 0.0, FUNNEL_POSE_H),
+        "upper_funnel": (1.405, 0.505, 3.0 * math.pi / 2.0, 0.0, 0.0, 0.0, FUNNEL_POSE_H),
         "lower_funnel": (1.405, 0.295, math.pi / 2.0, 0.0, 0.0, 0.0, FUNNEL_POSE_H),
         "gripper": (1.500000, 0.400000, math.pi, -0.300, 0.0, 0.0, GRIPPER_DROP_H),
     },
     6: {
-        "upper_funnel": (1.405, 0.105, -math.pi / 2.0, 0.0, 0.0, 0.0, FUNNEL_POSE_H),
+        "upper_funnel": (1.405, 0.105, 3.0 * math.pi / 2.0, 0.0, 0.0, 0.0, FUNNEL_POSE_H),
         "lower_funnel": (1.405, -0.105, math.pi / 2.0, 0.0, 0.0, 0.0, FUNNEL_POSE_H),
         "gripper": (1.500000, 0.000000, math.pi, -0.300, 0.0, 0.0, GRIPPER_DROP_H),
     },
     7: {
-        "upper_funnel": (1.405, -0.295, -math.pi / 2.0, 0.0, 0.0, 0.0, FUNNEL_POSE_H),
+        "upper_funnel": (1.405, -0.295, 3.0 * math.pi / 2.0, 0.0, 0.0, 0.0, FUNNEL_POSE_H),
         "lower_funnel": (1.405, -0.505, math.pi / 2.0, 0.0, 0.0, 0.0, FUNNEL_POSE_H),
         "gripper": (1.500000, -0.400000, math.pi, -0.300, 0.0, 0.0, GRIPPER_DROP_H),
     },
     8: {
-        "upper_funnel": (1.125, -0.770, -math.pi / 2.0, 0.0, 0.0, 0.0, FUNNEL_POSE_H),
+        "upper_funnel": (1.125, -0.770, 3.0 * math.pi / 2.0, 0.0, 0.0, 0.0, FUNNEL_POSE_H),
         "lower_funnel": (1.535, -0.405, 0.0, 0.0, 0.0, 0.0, FUNNEL_POSE_H),
-        "gripper": (1.374835, -0.609835, math.radians(135.0), -0.300, 0.0, math.radians(135.0), GRIPPER_DROP_H),
+        "gripper": (1.360693, -0.595693, math.radians(135.0), -0.320, 0.0, math.radians(135.0), GRIPPER_DROP_H),
     },
 }
+
+# ---- 运行时常量 ---------------------------------------------------------------
+
+GRIPPER_OPEN_ANGLE = math.radians(150.0)
+GRIPPER_CLOSED_ANGLE = 0.0
+
+放漏斗高度 = 0.3
+
+CHASSIS_SPEED_SCALE = 0.8
+ARM_SPEED_SCALE = 0.8
+ARM_FUNNEL_SPEED_SCALE = 0.5
+S_CROSS_SPEED_SCALE = 0.8
+
+PREPARE_PICK_MOVING_H = 0.42
+
+WAIT_POS_TOLERANCE = 0.02
+WAIT_YAW_TOLERANCE = math.radians(3.0)
+WAIT_TIMEOUT = 0.0
+WAIT_CROSS_TIMEOUT = 0.0
+
+FINISH_DRIVE: tuple[float, float, float] = (0.3, 0.0, 0.0)
+
+FUNNEL_ARM_TARGET: dict[str, tuple[float, float]] = {
+    "upper_funnel": (0.180, 0.185),
+    "lower_funnel": (0.180, -0.185),
+}
+FUNNEL_RELEASE_H = 0.20

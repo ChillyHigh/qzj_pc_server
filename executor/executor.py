@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import Callable
 
 from connection.client import Client, MachineState
-from plan import AbstractNode, ActionNode, DAG, WaitNode, children, dep_left
+from plan import AbstractNode, ActionNode, DAG, DelayNode, WaitNode, children, dep_left
 
 from .mixer import RunningAction, RuntimeMixer
 
@@ -31,6 +31,14 @@ class RunningWait:
     """已启动 Wait 的运行时状态。"""
 
     node: WaitNode
+    start_time: float
+
+
+@dataclass(frozen=True, slots=True)
+class RunningDelay:
+    """已启动 Delay 的运行时状态。"""
+
+    node: DelayNode
     start_time: float
 
 
@@ -62,6 +70,7 @@ class MissionExecutor:
         ready = deque(node for node in dag.nodes if remaining_deps[node] == 0)
         active_actions: dict[ActionNode, RunningAction] = {}
         active_waits: dict[WaitNode, RunningWait] = {}
+        active_delays: dict[DelayNode, RunningDelay] = {}
         done: set[AbstractNode] = set()
         kind_busy: dict[str, ActionNode] = {}
         hold_state = self.client.state
@@ -86,8 +95,9 @@ class MissionExecutor:
             feedback = self.client.feedback
 
             self._update_waits(active_waits, feedback, now, finish_node)
+            self._update_delays(active_delays, now, finish_node)
             hold_state = self._update_actions(active_actions, kind_busy, hold_state, now, finish_node)
-            self._start_ready_nodes(ready, active_actions, active_waits, kind_busy, now, finish_node)
+            self._start_ready_nodes(ready, active_actions, active_waits, active_delays, kind_busy, now, finish_node)
 
             hold_state = self.mixer.mix(active_actions, hold_state, now)
             self.client.send_command(hold_state)
@@ -107,7 +117,7 @@ class MissionExecutor:
         finish_node,
     ) -> None:
         for node, running in list(active_waits.items()):
-            if now - running.start_time > node.timeout:
+            if node.timeout > 0.0 and now - running.start_time > node.timeout:
                 raise ExecutionError(f"WaitNode {node.name} 超时。")
             if feedback is None:
                 continue
@@ -139,11 +149,23 @@ class MissionExecutor:
                 finish_node(node)
         return hold_state
 
+    def _update_delays(
+        self,
+        active_delays: dict[DelayNode, RunningDelay],
+        now: float,
+        finish_node,
+    ) -> None:
+        for node, running in list(active_delays.items()):
+            if now - running.start_time >= float(node.duration):
+                del active_delays[node]
+                finish_node(node)
+
     def _start_ready_nodes(
         self,
         ready: deque[AbstractNode],
         active_actions: dict[ActionNode, RunningAction],
         active_waits: dict[WaitNode, RunningWait],
+        active_delays: dict[DelayNode, RunningDelay],
         kind_busy: dict[str, ActionNode],
         now: float,
         finish_node,
@@ -158,6 +180,11 @@ class MissionExecutor:
                 if node in active_waits:
                     raise ExecutionError(f"WaitNode 重复启动：{node.name}")
                 active_waits[node] = RunningWait(node, now)
+                continue
+            if isinstance(node, DelayNode):
+                if node in active_delays:
+                    raise ExecutionError(f"DelayNode 重复启动：{node.name}")
+                active_delays[node] = RunningDelay(node, now)
                 continue
             if isinstance(node, ActionNode):
                 if node.kind in kind_busy:

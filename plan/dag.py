@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from .types import AbstractNode, ActionNode, WaitNode
+from .types import AbstractNode, ActionNode, DelayNode, WaitNode
 
 KIND_DIMS = {
     "chassis": 3,
@@ -64,6 +64,8 @@ def validate_dag(nodes: list[AbstractNode]) -> None:
             _validate_action(node)
         elif isinstance(node, WaitNode):
             _validate_wait(node)
+        elif isinstance(node, DelayNode):
+            _validate_delay(node)
         elif type(node) is not AbstractNode:
             raise DAGError(f"未知节点类型：{node!r}")
 
@@ -97,8 +99,15 @@ def _validate_wait(node: WaitNode) -> None:
     if not hasattr(node.target, "satisfied"):
         raise DAGError(f"WaitNode {node.name} target 缺少 satisfied(feedback)。")
     timeout = float(node.timeout)
-    if not np.isfinite(timeout) or timeout <= 0.0:
-        raise DAGError(f"WaitNode {node.name} timeout 必须大于 0。")
+    if not np.isfinite(timeout) or timeout < 0.0:
+        raise DAGError(f"WaitNode {node.name} timeout 不能为负数。")
+    # timeout == 0 表示不限制等待时间
+
+
+def _validate_delay(node: DelayNode) -> None:
+    duration = float(node.duration)
+    if not np.isfinite(duration) or duration < 0.0:
+        raise DAGError(f"DelayNode {node.name} duration 不能为负数。")
 
 
 def _validate_acyclic(nodes: list[AbstractNode]) -> None:

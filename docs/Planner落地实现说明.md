@@ -197,9 +197,9 @@ FUNNEL_DROP_BOX_EDGE_POINTS: dict[int, dict[DropCarrier, tuple[float, float]]]
 |---:|---|---|---:|---|
 | 1 | `(-1.480, 0.500, 0)` | `(-0.300, 0.000)` | `0` | 1/2 号位停车更远 |
 | 2 | `(-1.480, -0.500, 0)` | `(-0.300, 0.000)` | `0` | 1/2 号位停车更远 |
-| 3 | `(-1.315, 0.000, 0)` | `(-0.210, 0.000)` | `0` | 3 号位近一点，避开中间障碍 |
+| 3 | `(-1.300, 0.000, 0)` | `(-0.225, 0.000)` | `0` | 底盘左边界与 3 号箱右边界间距 `0.050m` |
 
-这些点保证箱中心落在 arm 局部 `y=0` 上。
+这些点保证箱中心落在 arm 局部 `y=0` 上。3 号点按底盘左边界与箱体右边界 `0.050m` 间距设置。
 
 ## 6. 固定放置位
 
@@ -226,30 +226,30 @@ FUNNEL_DROP_BOX_EDGE_POINTS: dict[int, dict[DropCarrier, tuple[float, float]]]
 |---:|---|---|---|
 | 4 | upper_funnel | `(1.640, 0.770)` | `(1.535, 0.405, 0)` |
 | 4 | lower_funnel | `(1.490, 0.875)` | `(1.125, 0.770, pi/2)` |
-| 5 | upper_funnel | `(1.770, 0.400)` | `(1.405, 0.505, -pi/2)` |
+| 5 | upper_funnel | `(1.770, 0.400)` | `(1.405, 0.505, 3π/2)` |
 | 5 | lower_funnel | `(1.770, 0.400)` | `(1.405, 0.295, pi/2)` |
-| 6 | upper_funnel | `(1.770, 0.000)` | `(1.405, 0.105, -pi/2)` |
+| 6 | upper_funnel | `(1.770, 0.000)` | `(1.405, 0.105, 3π/2)` |
 | 6 | lower_funnel | `(1.770, 0.000)` | `(1.405, -0.105, pi/2)` |
-| 7 | upper_funnel | `(1.770, -0.400)` | `(1.405, -0.295, -pi/2)` |
+| 7 | upper_funnel | `(1.770, -0.400)` | `(1.405, -0.295, 3π/2)` |
 | 7 | lower_funnel | `(1.770, -0.400)` | `(1.405, -0.505, pi/2)` |
-| 8 | upper_funnel | `(1.490, -0.875)` | `(1.125, -0.770, -pi/2)` |
+| 8 | upper_funnel | `(1.490, -0.875)` | `(1.125, -0.770, 3π/2)` |
 | 8 | lower_funnel | `(1.640, -0.770)` | `(1.535, -0.405, 0)` |
 
 ### 6.2 夹爪放置姿态
 
 夹爪放置的语义：
 
-- 箱中心落在 arm 局部 `(-0.300, 0.000)`。
+- 5/6/7 号箱中心落在 arm 局部 `(-0.300, 0.000)`；4/8 号斜角放置为避开箱体，箱中心落在 arm 局部 `(-0.320, 0.000)`。
 - 夹爪长边对齐箱子长边。
 - 夹爪长边是无向轴，`gripper_yaw=pi` 和 `0` 等价时取较小值。
 
 | 放置位 | drive pose `(x, y, yaw)` | arm `(x, y)` | `gripper_yaw` |
 |---:|---|---|---:|
-| 4 | `(1.374835, 0.609835, 225deg)` | `(-0.300, 0.000)` | `45deg` |
+| 4 | `(1.360693, 0.595693, 225deg)` | `(-0.320, 0.000)` | `45deg` |
 | 5 | `(1.500000, 0.400000, 180deg)` | `(-0.300, 0.000)` | `0deg` |
 | 6 | `(1.500000, 0.000000, 180deg)` | `(-0.300, 0.000)` | `0deg` |
 | 7 | `(1.500000, -0.400000, 180deg)` | `(-0.300, 0.000)` | `0deg` |
-| 8 | `(1.374835, -0.609835, 135deg)` | `(-0.300, 0.000)` | `135deg` |
+| 8 | `(1.360693, -0.595693, 135deg)` | `(-0.320, 0.000)` | `135deg` |
 
 当前点位图：
 
@@ -327,10 +327,10 @@ arm.prepare_pick(
 3. 下降到目标取货高度。
 
 ```python
-arm.grip_lift(
+arm.do_pick(
     start: tuple[float, float, float, float, float],
-    end_opening: float,
-    speed_scale: float,
+end_opening: float,
+speed_scale: float,
 ) -> AbstractGeometricPath
 ```
 
@@ -366,7 +366,7 @@ funnel.set(upper_open: bool, lower_open: bool) -> AbstractGeometricPath
 funnel.close_all() -> AbstractGeometricPath
 ```
 
-Flags path 的 duration 是 `0.0`，但仍然是 `ActionNode(kind="flags")`，会通过 executor 写入状态。flags 只有上漏斗和下漏斗两个 bit。
+打开漏斗的 flags path duration 使用 `funnel/config.py` 中的 `OPEN_DURATION`，当前为 `2.0s`；关闭漏斗仍为 `0.0s`。flags action 仍然是 `ActionNode(kind="flags")`，会通过 executor 写入状态。flags 只有上漏斗和下漏斗两个 bit。
 
 ## 8. DAG 如何合理并行
 

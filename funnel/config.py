@@ -1,0 +1,1 @@
+OPEN_DURATION = 2.0

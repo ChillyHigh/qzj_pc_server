@@ -17,7 +17,7 @@ EndEffectorState = ArmCartesianState
 ArmJointState = tuple[float, float, float, float, float]
 
 
-def move(start: EndEffectorState, end: EndEffectorState, speed_scale: float) -> AbstractGeometricPath:
+def move(start: EndEffectorState, end: EndEffectorState) -> AbstractGeometricPath:
     """末端从 start 移动到 end。
 
     start/end 是 arm 局部末端笛卡尔状态，gripper_yaw 相对底盘，
@@ -37,13 +37,12 @@ def move(start: EndEffectorState, end: EndEffectorState, speed_scale: float) -> 
                 gripper_yaw,
                 start[4],
             ),
-            speed_scale=speed_scale,
             source_kind="point",
             source_id=0,
         )
     )
 
-    waypoints.extend(_half_plane_guide_waypoints(start, end, start[3], speed_scale, 2))
+    waypoints.extend(_half_plane_guide_waypoints(start, end, start[3], 1, source_id = 2))
 
     q1, q2, gripper_yaw = kin.ik(end[0], end[1], end[2])
     waypoints.append(
@@ -55,9 +54,8 @@ def move(start: EndEffectorState, end: EndEffectorState, speed_scale: float) -> 
                 gripper_yaw,
                 end[4],
             ),
-            speed_scale=speed_scale,
             source_kind="point",
-            source_id=2,
+            source_id=3,
         )
     )
     return plan_joint_waypoints(waypoints)
@@ -189,20 +187,22 @@ def _half_plane_guide_waypoints(
     return waypoints
 
 
-def grip_lift(start: ArmJointState, end_opening: float, speed_scale: float) -> AbstractGeometricPath:
+def do_pick(start: EndEffectorState, bean_h: float) -> AbstractGeometricPath:
     """保持 q1/q2/gripper_yaw，同步上升 h 并改变 opening。
 
-    start 是 joint-space 状态 `(h, q1, q2, gripper_yaw, gripper_opening)`。
+    start 末端笛卡尔状态 `(x, y, gripper_yaw, h, gripper_opening)`。
     """
+    kin = FiveBarKinematics()
+    q1, q2, gripper_yaw = kin.ik(start[0], start[1], start[2])
 
-    end_h = start[0] + config.GRIP_LIFT_H
-    if end_h > config.H_MAX:
-        raise ArmPathError(f"grip_lift 目标 h 超出上限：{end_h:.4f}")
+    start_ik = (start[3], q1, q2, gripper_yaw, start[4])
+
     waypoints = [
-        Waypoint(q=start, speed_scale=speed_scale, source_kind="segment", source_id=0),
+        Waypoint(q=start_ik, source_kind="segment", source_id=0),
+        Waypoint(q=(bean_h, start_ik[1], start_ik[2], start_ik[3], start_ik[4]), source_kind="segment", source_id=0),
         Waypoint(
-            q=(end_h, start[1], start[2], start[3], end_opening),
-            speed_scale=speed_scale,
+            q=(start_ik[0], start_ik[1], start_ik[2], start_ik[3], 0),
+            speed_scale=1.0,
             source_kind="segment",
             source_id=0,
         ),

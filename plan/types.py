@@ -38,3 +38,10 @@ class WaitNode(AbstractNode):
 
     target: FeedbackTarget | None = None
     timeout: float = 0.0
+
+
+@dataclass(eq=False, slots=True)
+class DelayNode(AbstractNode):
+    """只由时间推进的延时节点。"""
+
+    duration: float = 0.0
