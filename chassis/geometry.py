@@ -19,6 +19,7 @@ from plan.setting import (
     FIELD_X_MIN,
     FIELD_Y_MAX,
     FIELD_Y_MIN,
+    FUNNEL_SIDE_EXTENSION_Y,
     OBSTACLE_CENTERS,
     OBSTACLE_RADIUS,
     TARGET_RECTS,
@@ -53,18 +54,18 @@ def _rotate(point: tuple[float, float], yaw: float) -> tuple[float, float]:
 
 
 def _oriented_chassis_corners(
-    drive_x: float, drive_y: float, drive_yaw: float,
+    drive_x: float, drive_y: float, drive_yaw: float, half_y: float = CHASSIS_HALF_Y,
 ) -> tuple[tuple[float, float], ...]:
     """底盘四角世界坐标（不对称包络，以驱动轮中心为参考点）。
 
-    底盘局部坐标系：+x 前方 215mm，-x 后方 195mm，±y 左右 335mm。
+    底盘局部坐标系：+x 前方 215mm，-x 后方 195mm，±y 左右由 half_y 指定。
     """
     # 四个角的局部坐标：(front/rear, left/right)
     local_corners = (
-        (CHASSIS_HALF_X_FRONT, CHASSIS_HALF_Y),    # 前左
-        (CHASSIS_HALF_X_FRONT, -CHASSIS_HALF_Y),   # 前右
-        (-CHASSIS_HALF_X_REAR, -CHASSIS_HALF_Y),   # 后右
-        (-CHASSIS_HALF_X_REAR, CHASSIS_HALF_Y),    # 后左
+        (CHASSIS_HALF_X_FRONT, half_y),    # 前左
+        (CHASSIS_HALF_X_FRONT, -half_y),   # 前右
+        (-CHASSIS_HALF_X_REAR, -half_y),   # 后右
+        (-CHASSIS_HALF_X_REAR, half_y),    # 后左
     )
     corners = []
     for lx, ly in local_corners:
@@ -121,18 +122,18 @@ def _rects_overlap(
 
 
 def _obstacle_collides(
-    drive_x: float, drive_y: float, drive_yaw: float,
+    drive_x: float, drive_y: float, drive_yaw: float, half_y: float,
 ) -> bool:
     """底盘矩形与障碍柱的碰撞检测。
 
     将圆心转到底盘局部坐标系，用 AABB 到点距离判断。
-    AABB 前方到 rear_x=+FRONT，后方到 front_x=-REAR，左右 ±HALF_Y。
+    AABB 前方到 rear_x=+FRONT，后方到 front_x=-REAR，左右 ±half_y。
     """
     for ox, oy in OBSTACLE_CENTERS:
         local = _rotate((ox - drive_x, oy - drive_y), -drive_yaw)
-        # 底盘局部 AABB：x ∈ [-REAR, +FRONT], y ∈ [-HALF_Y, +HALF_Y]
+        # 底盘局部 AABB：x ∈ [-REAR, +FRONT], y ∈ [-half_y, +half_y]
         dx = max(local[0] - CHASSIS_HALF_X_FRONT, -CHASSIS_HALF_X_REAR - local[0], 0.0)
-        dy = max(abs(local[1]) - CHASSIS_HALF_Y, 0.0)
+        dy = max(abs(local[1]) - half_y, 0.0)
         if math.hypot(dx, dy) <= OBSTACLE_RADIUS:
             return True
     return False
@@ -157,12 +158,26 @@ def is_drive_pose_colliding(
     """
     if not _is_chassis_inside_field(drive_x, drive_y, drive_yaw):
         return True
-    if _obstacle_collides(drive_x, drive_y, drive_yaw):
+    base_corners = _oriented_chassis_corners(drive_x, drive_y, drive_yaw)
+    funnel_corners = _oriented_chassis_corners(
+        drive_x,
+        drive_y,
+        drive_yaw,
+        CHASSIS_HALF_Y + FUNNEL_SIDE_EXTENSION_Y,
+    )
+
+    if _obstacle_collides(
+        drive_x,
+        drive_y,
+        drive_yaw,
+        CHASSIS_HALF_Y + FUNNEL_SIDE_EXTENSION_Y,
+    ):
         return True
     if not skip_boxes:
-        corners = _oriented_chassis_corners(drive_x, drive_y, drive_yaw)
-        for rect in TARGET_RECTS.values():
-            if _rects_overlap(corners, rect):
+        for pos_id, rect in TARGET_RECTS.items():
+            if _rects_overlap(base_corners, rect):
+                return True
+            if pos_id <= 3 and _rects_overlap(funnel_corners, rect):
                 return True
     return False
 

@@ -12,7 +12,7 @@ left to right direction
 [Planner\n内部完成 motion + TOPPRA\n输出 Compiled DAG\nActionNode(kind, q,dq,duration)\nWaitNode(feedback target)] as Planner
 [Executor\n按 DAG deps/resources 调度\n启动 ready Action] as Executor
 [RuntimeMixer\n每帧合并 active actions\nchassis + arm + flags] as Mixer
-[Protocol/Client\npack_frame\n14 float + flags] as Client
+[Protocol/Client\npack_frame\n14 float + flags + CRC-8] as Client
 node "下位机 MCU\n闭环控制 / 到位反馈" as MCU
 
 Planner --> Executor : Compiled DAG

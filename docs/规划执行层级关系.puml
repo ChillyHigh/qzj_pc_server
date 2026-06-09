@@ -29,7 +29,7 @@ package "Task B：AprilTag 定位服务\nAprilTagLocalizationTask" as TaskB {
   TagSolver --> TagSerial : x / y / yaw
 }
 
-Client --> MCU : 统一控制帧\n14 float + flags
+Client --> MCU : 统一控制帧\n14 float + flags + CRC-8
 MCU --> Client : 到位/失败反馈
 
 TagSerial --> ImuFusion : 定位数据\nx / y / yaw

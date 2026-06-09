@@ -41,8 +41,8 @@ FUNNEL_POSE_H = 0.3
 # ---- 漏斗几何 ---------------------------------------------------------------
 
 FUNNEL_EDGE_IN_CHASSIS_CENTER_X = 0.070
-UPPER_FUNNEL_EDGE_IN_CHASSIS_CENTER_Y = 0.365
-LOWER_FUNNEL_EDGE_IN_CHASSIS_CENTER_Y = -0.365
+UPPER_FUNNEL_EDGE_IN_CHASSIS_CENTER_Y = 0.350
+LOWER_FUNNEL_EDGE_IN_CHASSIS_CENTER_Y = -0.350
 
 # ---- 预设姿态 ---------------------------------------------------------------
 
@@ -51,8 +51,8 @@ LOWER_FUNNEL_EDGE_IN_CHASSIS_CENTER_Y = -0.365
 货箱高 = 0.15
 #  x, y, yaw, x, y, g_y, h
 PICKUP_POSES: dict[int, Pose] = {
-    1: (-1.480, 0.500, 0.0, -0.300, 0.0, 0.0, 0.1),
-    2: (-1.480, -0.500, 0.0, -0.300, 0.0, 0.0, 0.05),
+    1: (-1.480, 0.530, 0.0, -0.300, -0.030, 0.0, 0.1),
+    2: (-1.480, -0.530, 0.0, -0.300, 0.030, 0.0, 0.05),
     3: (-1.300, 0.000, 0.0, -0.225, 0.0, 0.0, 0.15),
 }
 
@@ -81,28 +81,28 @@ FUNNEL_DROP_BOX_EDGE_POINTS: dict[int, dict[DropCarrier, tuple[float, float]]] =
 
 DROP_POSES: dict[int, dict[DropCarrier, Pose]] = {
     4: {
-        "upper_funnel": (1.535, 0.405, 0.0, 0.0, 0.0, 0.0, FUNNEL_POSE_H),
-        "lower_funnel": (1.125, 0.770, math.pi / 2.0, 0.0, 0.0, 0.0, FUNNEL_POSE_H),
+        "upper_funnel": (1.535, 0.420, 0.0, 0.0, 0.0, 0.0, FUNNEL_POSE_H),
+        "lower_funnel": (1.140, 0.770, math.pi / 2.0, 0.0, 0.0, 0.0, FUNNEL_POSE_H),
         "gripper": (1.360693, 0.595693, math.radians(225.0), -0.320, 0.0, math.radians(45.0), GRIPPER_DROP_H),
     },
     5: {
-        "upper_funnel": (1.405, 0.505, 3.0 * math.pi / 2.0, 0.0, 0.0, 0.0, FUNNEL_POSE_H),
-        "lower_funnel": (1.405, 0.295, math.pi / 2.0, 0.0, 0.0, 0.0, FUNNEL_POSE_H),
+        "upper_funnel": (1.420, 0.505, 3.0 * math.pi / 2.0, 0.0, 0.0, 0.0, FUNNEL_POSE_H),
+        "lower_funnel": (1.420, 0.295, math.pi / 2.0, 0.0, 0.0, 0.0, FUNNEL_POSE_H),
         "gripper": (1.500000, 0.400000, math.pi, -0.300, 0.0, 0.0, GRIPPER_DROP_H),
     },
     6: {
-        "upper_funnel": (1.405, 0.105, 3.0 * math.pi / 2.0, 0.0, 0.0, 0.0, FUNNEL_POSE_H),
-        "lower_funnel": (1.405, -0.105, math.pi / 2.0, 0.0, 0.0, 0.0, FUNNEL_POSE_H),
+        "upper_funnel": (1.420, 0.105, 3.0 * math.pi / 2.0, 0.0, 0.0, 0.0, FUNNEL_POSE_H),
+        "lower_funnel": (1.420, -0.105, math.pi / 2.0, 0.0, 0.0, 0.0, FUNNEL_POSE_H),
         "gripper": (1.500000, 0.000000, math.pi, -0.300, 0.0, 0.0, GRIPPER_DROP_H),
     },
     7: {
-        "upper_funnel": (1.405, -0.295, 3.0 * math.pi / 2.0, 0.0, 0.0, 0.0, FUNNEL_POSE_H),
-        "lower_funnel": (1.405, -0.505, math.pi / 2.0, 0.0, 0.0, 0.0, FUNNEL_POSE_H),
+        "upper_funnel": (1.420, -0.295, 3.0 * math.pi / 2.0, 0.0, 0.0, 0.0, FUNNEL_POSE_H),
+        "lower_funnel": (1.420, -0.505, math.pi / 2.0, 0.0, 0.0, 0.0, FUNNEL_POSE_H),
         "gripper": (1.500000, -0.400000, math.pi, -0.300, 0.0, 0.0, GRIPPER_DROP_H),
     },
     8: {
-        "upper_funnel": (1.125, -0.770, 3.0 * math.pi / 2.0, 0.0, 0.0, 0.0, FUNNEL_POSE_H),
-        "lower_funnel": (1.535, -0.405, 0.0, 0.0, 0.0, 0.0, FUNNEL_POSE_H),
+        "upper_funnel": (1.140, -0.770, 3.0 * math.pi / 2.0, 0.0, 0.0, 0.0, FUNNEL_POSE_H),
+        "lower_funnel": (1.535, -0.420, 0.0, 0.0, 0.0, 0.0, FUNNEL_POSE_H),
         "gripper": (1.360693, -0.595693, math.radians(135.0), -0.320, 0.0, math.radians(135.0), GRIPPER_DROP_H),
     },
 }

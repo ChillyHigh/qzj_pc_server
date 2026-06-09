@@ -3,9 +3,11 @@ from __future__ import annotations
 import time
 from random import shuffle
 
-from connection import Client, WebSocketConfig, WebSocketTransport
+from connection import Client, WebSocketConfig, WebSocketTransport, SerialTransport, SerialConfig
 from executor import MissionExecutor
 from planner import Planner
+
+import serial.tools.list_ports
 
 FEEDBACK_WAIT_TIMEOUT_S = 2.0
 
@@ -27,6 +29,27 @@ def main() -> None:
     print(drop_assignment)
 
     client = Client(WebSocketTransport(WebSocketConfig(url="ws://127.0.0.1:8765")))
+
+    # 获取所有可用的串口
+    ports = list(serial.tools.list_ports.comports())
+    # 打印每个串口的描述信息
+    for port in ports:
+        print(port.device, port.name, port.description)
+
+    usb_port = None
+
+    for port in serial.tools.list_ports.comports():
+        if "USB" in port.description:
+            usb_port = port.device
+            break
+
+    print("使用串口:", usb_port)
+
+    client = Client(SerialTransport(SerialConfig(
+        port=usb_port,
+        baud=230400,
+        timeout=0.5,
+    )))
     if not client.connect():
         raise SystemExit("无法连接通信后端。")
 
@@ -64,11 +87,12 @@ def _read_initial_state(
     """从反馈帧读取当前 chassis 和 arm Cartesian 状态。"""
     import arm
 
-    deadline = time.perf_counter() + FEEDBACK_WAIT_TIMEOUT_S
-    while client.feedback is None and time.perf_counter() < deadline:
+    # deadline = time.perf_counter() + FEEDBACK_WAIT_TIMEOUT_S
+    while client.feedback is None:
         if client.error is not None:
             raise RuntimeError(f"通信接收失败：{client.error}") from client.error
-        time.sleep(0.01)
+        print(f"等待初始反馈，CRC错误数{client.feedback_crc_drop_count}")
+        time.sleep(0.1)
     feedback = client.feedback
     if feedback is None:
         raise RuntimeError("未收到仿真反馈帧，不能确定 arm 起点。")

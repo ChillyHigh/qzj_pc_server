@@ -23,6 +23,7 @@ TargetRect = tuple[tuple[float, float], tuple[float, float]]
 CHASSIS_HALF_X_FRONT = 0.215
 CHASSIS_HALF_X_REAR = 0.195
 CHASSIS_HALF_Y = 0.345
+FUNNEL_SIDE_EXTENSION_Y = 0.020
 # 底盘几何中心相对驱动轮中心的偏移（画图 / 换算用）
 CHASSIS_CENTER_FROM_DRIVE = (0.035, 0.0)
 # 总长宽（画图 / 换算用）

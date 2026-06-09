@@ -7,7 +7,7 @@ from typing import Callable
 
 import serial
 
-from .protocol import Feedback, pack_frame, parse_feedback
+from .protocol import FEEDBACK_SIZE, SOF_BYTES, Feedback, pack_frame, parse_feedback
 
 
 @dataclass(frozen=True, slots=True)
@@ -60,6 +60,7 @@ class Transport(ABC):
         self._feedback: Feedback | None = None
         self._error: Exception | None = None
         self._callback: Callable[[Feedback], None] | None = None
+        self._feedback_crc_drop_count = 0
 
     @property
     def feedback(self) -> Feedback | None:
@@ -73,6 +74,12 @@ class Transport(ABC):
 
         return self._error
 
+    @property
+    def feedback_crc_drop_count(self) -> int:
+        """返回 CRC 错误导致丢弃的反馈帧数量。"""
+
+        return self._feedback_crc_drop_count
+
     def set_feedback_callback(self, callback: Callable[[Feedback], None]) -> None:
         """设置反馈回调；每收到完整反馈帧调用一次。"""
 
@@ -85,6 +92,9 @@ class Transport(ABC):
 
     def _fail(self, exc: Exception) -> None:
         self._error = exc
+
+    def _record_feedback_crc_drop(self) -> None:
+        self._feedback_crc_drop_count += 1
 
     def _publish(self, feedback: Feedback) -> None:
         self._feedback = feedback
@@ -147,7 +157,7 @@ class SerialTransport(Transport):
                 data = self._ser.read(256)
                 if not data:
                     continue
-                _consume_feedback_bytes(buf, data, self._publish)
+                _consume_feedback_bytes(buf, data, self._publish, self._record_feedback_crc_drop)
         except Exception as exc:
             self._fail(exc)
             self._running = False
@@ -206,7 +216,7 @@ class WebSocketTransport(Transport):
                     continue
                 if not isinstance(data, (bytes, bytearray)):
                     raise RuntimeError(f"websocket 收到非二进制反馈：{type(data)!r}")
-                _consume_feedback_bytes(buf, data, self._publish)
+                _consume_feedback_bytes(buf, data, self._publish, self._record_feedback_crc_drop)
         except Exception as exc:
             self._fail(exc)
             self._running = False
@@ -230,6 +240,12 @@ class Client:
         """后台接收错误。"""
 
         return self.transport.error
+
+    @property
+    def feedback_crc_drop_count(self) -> int:
+        """CRC 错误导致丢弃的反馈帧数量。"""
+
+        return self.transport.feedback_crc_drop_count
 
     def connect(self) -> bool:
         """连接通信后端。"""
@@ -281,14 +297,22 @@ def _consume_feedback_bytes(
     buf: bytearray,
     data: bytes | bytearray,
     publish: Callable[[Feedback], None],
+    record_crc_drop: Callable[[], None] | None = None,
 ) -> None:
     buf.extend(data)
     if len(buf) > 1024:
         del buf[: len(buf) - 1024]
     while buf:
+        is_crc_drop = len(buf) >= FEEDBACK_SIZE and buf.startswith(SOF_BYTES)
         feedback, consumed = parse_feedback(buf)
         if consumed > 0:
             del buf[:consumed]
         if feedback is None:
+            if consumed > 0 and is_crc_drop:
+                if record_crc_drop is not None:
+                    record_crc_drop()
+                continue
+            if consumed > 0:
+                continue
             break
         publish(feedback)

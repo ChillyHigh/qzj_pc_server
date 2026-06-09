@@ -79,7 +79,7 @@ def s_cross(start: Pose, end: Pose) -> AbstractGeometricPath:
     cp2: Pose = (0.5, 0.5, end[2])
 
     seg1 = plan_avoidance_path(start, cp1)
-    seg2 = plan_avoidance_path(seg1[-1], cp2)
+    seg2 = [seg1[-1], cp2]
     seg3 = plan_avoidance_path(seg2[-1], end)
     all_points = _continuous_yaw_points(seg1 + seg2[1:] + seg3[1:])
 
