@@ -6,6 +6,7 @@ import numpy as np
 import toppra as ta
 import toppra.algorithm as algo
 import toppra.constraint as constraint
+from toppra.interpolator import AbstractGeometricPath
 
 from .densify import compute_path_s, deduplicate_waypoints, densify_segments
 from .smoothing import find_corner_windows, smooth_corners
@@ -77,7 +78,7 @@ class ToppraPlanner:
         waypoints: list[Waypoint],
         *,
         max_step: float = DEFAULT_MAX_STEP,
-    ):
+    ) -> AbstractGeometricPath:
         """生成带时间戳、速度和加速度的轨迹点。"""
 
         if len(waypoints) < 2:
@@ -115,16 +116,13 @@ class ToppraPlanner:
         expected_dim = len(waypoints[0].q)
         if expected_dim != len(self.vlim) or expected_dim != len(self.alim):
             raise TrajectoryError("航点维度与速度/加速度限制维度不一致。")
-        for idx, waypoint in enumerate(waypoints):
-            q = np.asarray(waypoint.q, dtype=float)
-            if len(q) != expected_dim:
-                raise TrajectoryError(f"航点[{idx}] 维度不一致。")
-            if not np.all(np.isfinite(q)):
-                raise TrajectoryError(f"航点[{idx}] 包含 NaN 或无穷大。")
-            if self.q_min is not None and np.any(q < self.q_min):
-                raise TrajectoryError(f"航点[{idx}] 小于 q_min。")
-            if self.q_max is not None and np.any(q > self.q_max):
-                raise TrajectoryError(f"航点[{idx}] 大于 q_max。")
+        if self.q_min is not None or self.q_max is not None:
+            for idx, waypoint in enumerate(waypoints):
+                q = np.asarray(waypoint.q, dtype=float)
+                if self.q_min is not None and np.any(q < self.q_min):
+                    raise TrajectoryError(f"航点[{idx}] 小于 q_min。")
+                if self.q_max is not None and np.any(q > self.q_max):
+                    raise TrajectoryError(f"航点[{idx}] 大于 q_max。")
 
 
 def _sample_meta(

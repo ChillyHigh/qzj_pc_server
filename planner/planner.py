@@ -228,7 +228,7 @@ class Planner:
             pickup_1[config.DRIVE_Y],
             pickup_1[config.DRIVE_YAW],
         )
-        path = chassis.direct(self._drive, raw_target)
+        path = chassis.move(self._drive, raw_target)
         reached = _path_end_drive(path)
         chassis_move = ActionNode(
             name=self._next_name("chassis_to_pickup_area"),
@@ -277,7 +277,7 @@ class Planner:
             config.GRIPPER_OPEN_ANGLE,
         )
 
-        path = chassis.direct(self._drive, raw_drive_target)
+        path = chassis.move(self._drive, raw_drive_target)
         reached = _path_end_drive(path)
         chassis_move = ActionNode(
             name=self._next_name(f"chassis_to_pick_{pickup_pos}"),
@@ -567,7 +567,7 @@ class Planner:
             pose[config.DRIVE_Y],
             pose[config.DRIVE_YAW],
         )
-        path = chassis.direct(self._drive, raw_drive_target)
+        path = chassis.move(self._drive, raw_drive_target)
         reached = _path_end_drive(path)
         chassis_move = ActionNode(
             name=self._next_name(f"chassis_to_drop_{drop_pos}_{carrier}"),
@@ -657,7 +657,7 @@ class Planner:
     # ---- Phase 4: 结束 -------------------------------------------------------
 
     def _add_finish(self, nodes: list[AbstractNode], prev: AbstractNode) -> None:
-        path = chassis.direct(self._drive, config.FINISH_DRIVE)
+        path = chassis.move(self._drive, config.FINISH_DRIVE)
         reached = _path_end_drive(path)
         chassis_finish = ActionNode(
             name=self._next_name("chassis_to_finish"),

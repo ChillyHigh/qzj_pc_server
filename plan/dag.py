@@ -77,8 +77,6 @@ def _validate_action(node: ActionNode) -> None:
         raise DAGError(f"ActionNode {node.name} kind 非法：{node.kind}")
     if node.path is None:
         raise DAGError(f"ActionNode {node.name} 缺少 path。")
-    if not hasattr(node.path, "duration"):
-        raise DAGError(f"ActionNode {node.name} path 缺少 duration。")
     duration = float(node.path.duration)
     if not np.isfinite(duration) or duration < 0.0:
         raise DAGError(f"ActionNode {node.name} path.duration 非法：{duration}")
@@ -89,8 +87,6 @@ def _validate_action(node: ActionNode) -> None:
         raise DAGError(f"ActionNode {node.name} q 维度应为 {expected_dim}，实际为 {q0.shape}。")
     if dq0.shape != (expected_dim,):
         raise DAGError(f"ActionNode {node.name} dq 维度应为 {expected_dim}，实际为 {dq0.shape}。")
-    if not np.all(np.isfinite(q0)) or not np.all(np.isfinite(dq0)):
-        raise DAGError(f"ActionNode {node.name} path 采样包含 NaN 或无穷大。")
 
 
 def _validate_wait(node: WaitNode) -> None:

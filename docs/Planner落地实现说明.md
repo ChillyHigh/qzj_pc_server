@@ -264,10 +264,10 @@ Planner 不直接创建轨迹数组，而是调用执行层已经稳定的 path 
 ### 7.1 Chassis API
 
 ```python
-chassis.direct(
+chassis.move(
     start: tuple[float, float, float],
-    end: tuple[float, float, float],
-    speed_scale: float,
+end: tuple[float, float, float],
+speed_scale: float,
 ) -> AbstractGeometricPath
 ```
 
@@ -290,10 +290,10 @@ chassis.s_cross(
 ### 7.2 Arm API
 
 ```python
-arm.move(
+arm.direct(
     start: tuple[float, float, float, float, float],
-    end: tuple[float, float, float, float, float],
-    speed_scale: float,
+end: tuple[float, float, float, float, float],
+speed_scale: float,
 ) -> AbstractGeometricPath
 ```
 
@@ -490,7 +490,7 @@ arm_target = (
 pickup_pose = config.PICKUP_POSES[pickup_pos]
 drive_target = pickup_pose[:3]
 
-chassis_path = chassis.direct(current_drive, drive_target, speed_scale=0.8)
+chassis_path = chassis.move(current_drive, drive_target, speed_scale=0.8)
 arm_path = arm.prepare_pick(
     current_arm_cartesian,
     (
@@ -509,7 +509,7 @@ arm_path = arm.prepare_pick(
 
 ```python
 drop_pose = config.DROP_POSES[drop_pos]["upper_funnel"]
-chassis_path = chassis.direct(current_drive, drop_pose[:3], speed_scale=0.8)
+chassis_path = chassis.move(current_drive, drop_pose[:3], speed_scale=0.8)
 open_path = funnel.upper(True)
 close_path = funnel.upper(False)
 ```
@@ -525,7 +525,7 @@ drop_state = (
     drop_pose[config.H],
     closed_angle,
 )
-arm_path = arm.move(
+arm_path = arm.direct(
     current_arm_cartesian,
     drop_state,
     speed_scale=0.8,

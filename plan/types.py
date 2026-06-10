@@ -1,12 +1,22 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Literal, Protocol
+from typing import Callable, Literal, Protocol
 
-if TYPE_CHECKING:
-    from toppra.interpolator import AbstractGeometricPath
+import numpy as np
 
 ActionKind = Literal["chassis", "arm", "flags"]
+
+
+@dataclass(frozen=True, slots=True)
+class PlannedPath:
+    """planner ↔ executor 路径契约。"""
+
+    _sampler: Callable[[np.ndarray, int], np.ndarray] = field(repr=False)
+    duration: float
+
+    def __call__(self, path_positions, order: int = 0) -> np.ndarray:
+        return self._sampler(np.asarray(path_positions, dtype=float), order)
 
 
 class FeedbackTarget(Protocol):
@@ -29,7 +39,7 @@ class ActionNode(AbstractNode):
     """一段占用单个 kind 资源的可采样轨迹。"""
 
     kind: ActionKind = "chassis"
-    path: AbstractGeometricPath | None = None
+    path: PlannedPath | None = None
 
 
 @dataclass(eq=False, slots=True)
