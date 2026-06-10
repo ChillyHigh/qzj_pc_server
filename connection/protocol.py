@@ -73,24 +73,26 @@ def pack_frame(
 ) -> bytes:
     """打包统一控制帧。
 
-    x/y/yaw 使用四主动轮对角线交点。
+    Python 侧内部统一使用 rad/rad/s；下位机协议使用 deg/deg/s 接收角度量。
+    因此只在这里把角度目标和角速度前馈转成下位机单位。
+    x/y 使用四主动轮对角线交点。
     """
 
     values = (
         x,
         y,
-        yaw,
+        math.degrees(yaw),
         h,
-        q1,
-        q2,
-        gripper_yaw,
-        gripper_opening,
+        math.degrees(q1),
+        math.degrees(q2),
+        math.degrees(gripper_yaw),
+        math.degrees(gripper_opening),
         dx,
         dy,
-        dyaw,
+        math.degrees(dyaw),
         dh,
-        dq1,
-        dq2,
+        math.degrees(dq1),
+        math.degrees(dq2),
     )
     if not all(math.isfinite(value) for value in values):
         raise ProtocolError("控制帧包含 NaN 或无穷大。")
