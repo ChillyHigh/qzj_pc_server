@@ -5,6 +5,8 @@ from typing import Callable, Literal, Protocol
 
 import numpy as np
 
+from connection.client import MachineState
+
 ActionKind = Literal["chassis", "arm", "flags"]
 
 
@@ -32,6 +34,23 @@ class AbstractNode:
 
     name: str
     deps: list[AbstractNode] = field(default_factory=list)
+
+
+@dataclass(init=False, eq=False, slots=True)
+class StartNode(AbstractNode):
+    """DAG 起始节点，携带机器人初始状态。"""
+
+    initial_state: MachineState
+
+    def __init__(
+        self,
+        name: str,
+        initial_state: MachineState,
+        deps: list[AbstractNode] | None = None,
+    ) -> None:
+        self.name = name
+        self.deps = [] if deps is None else deps
+        self.initial_state = initial_state
 
 
 @dataclass(eq=False, slots=True)

@@ -7,7 +7,8 @@ from typing import TYPE_CHECKING
 import arm
 import chassis
 import funnel
-from plan import AbstractNode, ActionNode, DAG, WaitNode, DelayNode
+from connection.client import MachineState
+from plan import AbstractNode, ActionNode, DAG, WaitNode, DelayNode, StartNode
 
 from . import config
 
@@ -88,11 +89,22 @@ class Planner:
 
     def __init__(
         self,
-        init_chassis: tuple[float, float, float],
-        init_arm: tuple[float, float, float, float, float],  # x, y, g_yaw, height, open
+        initial_state: MachineState,
     ) -> None:
-        self._initial_drive: DrivePose = init_chassis
-        self._initial_arm: ArmCartesian = init_arm
+        self._initial_state = initial_state
+        self._initial_drive: DrivePose = (
+            initial_state.x,
+            initial_state.y,
+            initial_state.yaw,
+        )
+        ax, ay, ayaw = arm.FiveBarKinematics().fk(initial_state.q1, initial_state.q2, 0.0)
+        self._initial_arm: ArmCartesian = (
+            ax,
+            ay,
+            ayaw,
+            initial_state.h,
+            initial_state.gripper_opening,
+        )
         self._drive: DrivePose = self._initial_drive
         self._arm: ArmCartesian = self._initial_arm
         self._counter = 0
@@ -176,7 +188,7 @@ class Planner:
         self._arm = self._initial_arm
 
         nodes: list[AbstractNode] = []
-        start = AbstractNode(self._next_name("start"))
+        start = StartNode(self._next_name("start"), self._initial_state)
         nodes.append(start)
 
         prev = self._add_move_to_pickup_area(nodes, start)

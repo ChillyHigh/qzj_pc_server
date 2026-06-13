@@ -225,9 +225,8 @@ class WebSocketTransport(Transport):
 class Client:
     """统一下发客户端；只发送当前单帧，不理解 DAG 或轨迹来源。"""
 
-    def __init__(self, transport: Transport, *, state: MachineState | None = None) -> None:
+    def __init__(self, transport: Transport) -> None:
         self.transport = transport
-        self.state = state or MachineState()
 
     @property
     def feedback(self) -> Feedback | None:
@@ -290,7 +289,6 @@ class Client:
             state.flags,
         )
         self.transport.send_frame(frame)
-        self.state = state
 
 
 def _consume_feedback_bytes(

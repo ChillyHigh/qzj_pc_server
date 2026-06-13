@@ -5,7 +5,9 @@ from dataclasses import dataclass
 
 import numpy as np
 
-from .types import AbstractNode, ActionNode, DelayNode, WaitNode
+from connection.client import MachineState
+
+from .types import AbstractNode, ActionNode, DelayNode, StartNode, WaitNode
 
 KIND_DIMS = {
     "chassis": 3,
@@ -56,6 +58,10 @@ def validate_dag(nodes: list[AbstractNode]) -> None:
         raise DAGError("DAG 节点 name 必须唯一，便于日志和报错。")
 
     node_set = set(nodes)
+    start_nodes = [node for node in nodes if isinstance(node, StartNode)]
+    if len(start_nodes) != 1:
+        raise DAGError(f"DAG 必须恰好包含一个 StartNode，实际为 {len(start_nodes)}。")
+
     for node in nodes:
         for dep in node.deps:
             if dep not in node_set:
@@ -66,6 +72,8 @@ def validate_dag(nodes: list[AbstractNode]) -> None:
             _validate_wait(node)
         elif isinstance(node, DelayNode):
             _validate_delay(node)
+        elif isinstance(node, StartNode):
+            _validate_start(node)
         elif type(node) is not AbstractNode:
             raise DAGError(f"未知节点类型：{node!r}")
 
@@ -87,6 +95,11 @@ def _validate_action(node: ActionNode) -> None:
         raise DAGError(f"ActionNode {node.name} q 维度应为 {expected_dim}，实际为 {q0.shape}。")
     if dq0.shape != (expected_dim,):
         raise DAGError(f"ActionNode {node.name} dq 维度应为 {expected_dim}，实际为 {dq0.shape}。")
+
+
+def _validate_start(node: StartNode) -> None:
+    if not isinstance(node.initial_state, MachineState):
+        raise DAGError(f"StartNode {node.name} initial_state 必须是 MachineState。")
 
 
 def _validate_wait(node: WaitNode) -> None:

@@ -4,7 +4,7 @@ from collections import defaultdict, deque
 from pathlib import Path
 from typing import Iterable
 
-from plan import AbstractNode, ActionNode, DAG, DelayNode, WaitNode
+from plan import AbstractNode, ActionNode, DAG, DelayNode, StartNode, WaitNode
 from plan.dag import children
 
 
@@ -154,6 +154,8 @@ def _node_colors(node: AbstractNode) -> tuple[str, str]:
         return "#eceff3", "#6b7785"
     if isinstance(node, DelayNode):
         return "#f3e8ff", "#8558c8"
+    if isinstance(node, StartNode):
+        return "#ffffff", "#2f3a45"
     if type(node) is AbstractNode:
         return "#ffffff", "#2f3a45"
     raise DAGPlotError(f"未知节点类型：{node!r}")
@@ -168,4 +170,6 @@ def _label(node: AbstractNode) -> str:
         return f"{node.name}\nwait  {timeout}"
     if isinstance(node, DelayNode):
         return f"{node.name}\ndelay  {float(node.duration):.2f}s"
+    if isinstance(node, StartNode):
+        return f"{node.name}\nstart"
     return node.name

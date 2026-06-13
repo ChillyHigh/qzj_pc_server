@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from typing import Callable
 
 from connection.client import Client, MachineState
-from plan import AbstractNode, ActionNode, DAG, DelayNode, WaitNode, children, dep_left
+from plan import AbstractNode, ActionNode, DAG, DelayNode, StartNode, WaitNode, children, dep_left
 
 from .mixer import RunningAction, RuntimeMixer
 
@@ -73,7 +73,8 @@ class MissionExecutor:
         active_delays: dict[DelayNode, RunningDelay] = {}
         done: set[AbstractNode] = set()
         kind_busy: dict[str, ActionNode] = {}
-        hold_state = self.client.state
+        start_node = next(node for node in dag.nodes if isinstance(node, StartNode))
+        hold_state = start_node.initial_state
         period = 1.0 / self.control_hz
         next_tick = self.clock()
 
@@ -107,7 +108,7 @@ class MissionExecutor:
             if sleep_s > 0.0:
                 self.sleep(sleep_s)
 
-        return ExecutionResult(True, len(done), self.client.state)
+        return ExecutionResult(True, len(done), hold_state)
 
     def _update_waits(
         self,
@@ -173,6 +174,9 @@ class MissionExecutor:
         deferred: deque[AbstractNode] = deque()
         while ready:
             node = ready.popleft()
+            if isinstance(node, StartNode):
+                finish_node(node)
+                continue
             if type(node) is AbstractNode:
                 finish_node(node)
                 continue

@@ -1,5 +1,5 @@
 from .dag import DAG, DAGError, KIND_DIMS, children, dep_left, validate_dag
-from .types import AbstractNode, ActionKind, ActionNode, FeedbackTarget, PlannedPath, WaitNode, DelayNode
+from .types import AbstractNode, ActionKind, ActionNode, FeedbackTarget, PlannedPath, StartNode, WaitNode, DelayNode
 
 __all__ = [
     "AbstractNode",
@@ -11,6 +11,7 @@ __all__ = [
     "FeedbackTarget",
     "KIND_DIMS",
     "PlannedPath",
+    "StartNode",
     "WaitNode",
     "children",
     "dep_left",

@@ -3,12 +3,25 @@ from __future__ import annotations
 import math
 import unittest
 
+import arm
 from connection.protocol import Feedback
-from plan import AbstractNode, ActionNode, WaitNode
+from connection.client import MachineState
+from plan import ActionNode, WaitNode
 from planner import ChassisReachedTarget, Planner
 
 INIT_CHASSIS = (0.3, 0.0, 0.0)
 INIT_ARM = (0.055, 0.0, 0.0, 0.3, 0.0)
+INIT_Q1, INIT_Q2, INIT_GRIPPER_YAW = arm.FiveBarKinematics().ik(INIT_ARM[0], INIT_ARM[1], INIT_ARM[2])
+INIT_STATE = MachineState(
+    x=INIT_CHASSIS[0],
+    y=INIT_CHASSIS[1],
+    yaw=INIT_CHASSIS[2],
+    h=INIT_ARM[3],
+    q1=INIT_Q1,
+    q2=INIT_Q2,
+    gripper_yaw=INIT_GRIPPER_YAW,
+    gripper_opening=INIT_ARM[4],
+)
 
 
 class TestChassisReachedTarget(unittest.TestCase):
@@ -51,7 +64,7 @@ class TestChassisReachedTarget(unittest.TestCase):
 
 class TestPlannerGeneration(unittest.TestCase):
     def setUp(self) -> None:
-        self.planner = Planner(INIT_CHASSIS, INIT_ARM)
+        self.planner = Planner(INIT_STATE)
 
     def test_generates_valid_dag(self) -> None:
         dag, estimated_time = self.planner.generate([3, 1, 2], [4, 1, 2, 3, 5])
@@ -107,7 +120,7 @@ class TestPlannerGeneration(unittest.TestCase):
 
     def test_gripper_only_assignment_works(self) -> None:
         """所有 bean 都分配到 drop 位 4/5/6，planner 能从候选选择最优 DAG。"""
-        planner = Planner(INIT_CHASSIS, INIT_ARM)
+        planner = Planner(INIT_STATE)
         dag, estimated_time = planner.generate([1, 2, 3], [1, 2, 3, 4, 5])
         self.assertGreater(len(dag.nodes), 0)
         self.assertGreater(estimated_time, 0.0)
@@ -118,7 +131,7 @@ class TestPlannerGeneration(unittest.TestCase):
 
 class TestPlannerEdgeCases(unittest.TestCase):
     def setUp(self) -> None:
-        self.planner = Planner(INIT_CHASSIS, INIT_ARM)
+        self.planner = Planner(INIT_STATE)
 
     def test_invalid_pickup_length_raises(self) -> None:
         with self.assertRaises(ValueError):

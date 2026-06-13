@@ -8,7 +8,8 @@ from pathlib import Path
 import numpy as np
 
 from debug import draw_dag
-from plan import AbstractNode, ActionNode, DAG, WaitNode
+from connection.client import MachineState
+from plan import ActionNode, DAG, StartNode, WaitNode
 
 
 os.environ.setdefault("MPLCONFIGDIR", "/private/tmp/mplconfig")
@@ -32,7 +33,7 @@ class AlwaysTarget:
 
 class DebugDAGPlotTest(unittest.TestCase):
     def test_draw_dag_writes_png(self) -> None:
-        start = AbstractNode("start")
+        start = StartNode("start", MachineState())
         chassis = ActionNode("go", deps=[start], kind="chassis", path=FakePath(3, 1.2))
         wait = WaitNode("feedback", deps=[chassis], target=AlwaysTarget(), timeout=2.0)
         arm = ActionNode("pick", deps=[wait], kind="arm", path=FakePath(5, 0.8))

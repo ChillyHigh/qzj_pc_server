@@ -45,7 +45,23 @@ def test_pack_frame_appends_crc8_atm_over_payload() -> None:
 
     assert len(frame) == CMD_SIZE
     assert frame[:2] == SOF_BYTES
-    payload = struct.pack(CMD_PAYLOAD_FORMAT, *values, 0x03)
+    wire_values = (
+        values[0],
+        values[1],
+        math.degrees(values[2]),
+        values[3],
+        math.degrees(values[4]),
+        math.degrees(values[5]),
+        math.degrees(values[6]),
+        math.degrees(values[7]),
+        values[8],
+        values[9],
+        math.degrees(values[10]),
+        values[11],
+        math.degrees(values[12]),
+        math.degrees(values[13]),
+    )
+    payload = struct.pack(CMD_PAYLOAD_FORMAT, *wire_values, 0x03)
     assert frame[2:-1] == payload
     assert frame[-1] == crc8_atm(payload)
 
