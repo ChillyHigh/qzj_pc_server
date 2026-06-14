@@ -67,11 +67,11 @@ def test_pack_frame_appends_crc8_atm_over_payload() -> None:
 
 
 def test_parse_feedback_accepts_valid_crc_frame() -> None:
-    frame = _feedback_frame((1.0, 2.0, 3.0, 4.0, 5.0, 6.0))
+    frame = _feedback_frame((1.0, 2.0, 3.0, 4.0, 90.0, 180.0))
 
     feedback, consumed = parse_feedback(frame)
 
-    assert feedback == Feedback(1.0, 2.0, 3.0, 4.0, 5.0, 6.0)
+    assert feedback == Feedback(1.0, 2.0, 3.0, 4.0, math.pi / 2.0, math.pi)
     assert consumed == FEEDBACK_SIZE
 
 
@@ -88,7 +88,7 @@ def test_parse_feedback_discards_bad_crc_frame_without_raising() -> None:
 def test_consume_feedback_bytes_counts_bad_crc_and_continues() -> None:
     bad = bytearray(_feedback_frame((1.0, 2.0, 3.0, 4.0, 5.0, 6.0)))
     bad[7] ^= 0x01
-    good = _feedback_frame((7.0, 8.0, 9.0, 10.0, 11.0, 12.0))
+    good = _feedback_frame((7.0, 8.0, 9.0, 10.0, 90.0, 180.0))
     published: list[Feedback] = []
     drops = 0
 
@@ -99,7 +99,7 @@ def test_consume_feedback_bytes_counts_bad_crc_and_continues() -> None:
     _consume_feedback_bytes(bytearray(), bytes(bad) + good, published.append, record_drop)
 
     assert drops == 1
-    assert published == [Feedback(7.0, 8.0, 9.0, 10.0, 11.0, 12.0)]
+    assert published == [Feedback(7.0, 8.0, 9.0, 10.0, math.pi / 2.0, math.pi)]
 
 
 def test_parse_feedback_waits_for_partial_frame() -> None:
