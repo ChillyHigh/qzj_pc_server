@@ -44,7 +44,7 @@ class Feedback:
     """下位机或 MuJoCo 桥接反馈。
 
     x/y/yaw 使用四主动轮对角线交点。
-    Python 侧内部 q1/q2 使用 rad；下位机反馈帧 q1/q2 使用 deg。
+    Python 侧内部 yaw/q1/q2 使用 rad；下位机反馈帧 yaw/q1/q2 使用 deg。
     """
 
     x: float
@@ -124,8 +124,11 @@ def parse_feedback(data: bytes | bytearray) -> tuple[Feedback | None, int]:
     if actual_crc != expected_crc:
         return None, FEEDBACK_SIZE
 
-    x, y, yaw, h, q1_deg, q2_deg = struct.unpack(FEEDBACK_PAYLOAD_FORMAT, payload)
-    values = (x, y, yaw, h, q1_deg, q2_deg)
+    x, y, yaw_deg, h, q1_deg, q2_deg = struct.unpack(FEEDBACK_PAYLOAD_FORMAT, payload)
+    values = (x, y, yaw_deg, h, q1_deg, q2_deg)
     if not all(math.isfinite(value) for value in values):
         raise ProtocolError("反馈帧包含 NaN 或无穷大。")
-    return Feedback(x, y, yaw, h, math.radians(q1_deg), math.radians(q2_deg)), FEEDBACK_SIZE
+    return (
+        Feedback(x, y, math.radians(yaw_deg), h, math.radians(q1_deg), math.radians(q2_deg)),
+        FEEDBACK_SIZE,
+    )
