@@ -1,4 +1,5 @@
 from .client import Client, MachineState, SerialConfig, SerialTransport, Transport, WebSocketConfig, WebSocketTransport
+from .feedback_broadcaster import FeedbackBroadcastConfig, FeedbackBroadcaster
 from .protocol import (
     FLAG_LOWER_FUNNEL_OPEN,
     FLAG_UPPER_FUNNEL_OPEN,
@@ -9,6 +10,8 @@ from .protocol import (
 __all__ = [
     "Client",
     "Feedback",
+    "FeedbackBroadcastConfig",
+    "FeedbackBroadcaster",
     "FLAG_LOWER_FUNNEL_OPEN",
     "FLAG_UPPER_FUNNEL_OPEN",
     "MachineState",
