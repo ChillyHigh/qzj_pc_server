@@ -1,3 +1,11 @@
+import math
+
+
+TAG_GATE_UDS_PATH = "/tmp/qzj_apriltag_gate.sock"
+TAG_GATE_LINEAR_LIMIT = 0.05
+TAG_GATE_ANGULAR_LIMIT = math.radians(5.0)
+TAG_GATE_HEARTBEAT_S = 0.1
+
 vx_lim = 100 # x 方向运动速度的限制
 vy_lim = 100 # y 方向运动速度的限制
 ax_lim = 100 # x 方向运动加速度的限制

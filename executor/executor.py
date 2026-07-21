@@ -9,6 +9,7 @@ from connection.client import Client, MachineState
 from plan import AbstractNode, ActionNode, DAG, DelayNode, StartNode, WaitNode, children, dep_left
 
 from .mixer import RunningAction, RuntimeMixer
+from .tag_gate import TagGate, TagGateError, TagGateSender
 
 DEFAULT_CONTROL_HZ = 100.0
 
@@ -53,6 +54,7 @@ class MissionExecutor:
         clock: Callable[[], float] = time.perf_counter,
         sleep: Callable[[float], None] = time.sleep,
         mixer: RuntimeMixer | None = None,
+        tag_gate: TagGate | None = None,
     ) -> None:
         if control_hz <= 0.0:
             raise ValueError("control_hz 必须大于 0。")
@@ -61,6 +63,7 @@ class MissionExecutor:
         self.clock = clock
         self.sleep = sleep
         self.mixer = mixer or RuntimeMixer()
+        self.tag_gate = tag_gate if tag_gate is not None else TagGateSender()
 
     def run(self, dag: DAG) -> ExecutionResult:
         """执行 DAG，失败时抛出 ExecutionError。"""
@@ -101,6 +104,10 @@ class MissionExecutor:
             self._start_ready_nodes(ready, active_actions, active_waits, active_delays, kind_busy, now, finish_node)
 
             hold_state = self.mixer.mix(active_actions, hold_state, now)
+            try:
+                self.tag_gate.publish(hold_state, now)
+            except TagGateError as exc:
+                raise ExecutionError(str(exc)) from exc
             self.client.send_command(hold_state)
 
             next_tick += period
