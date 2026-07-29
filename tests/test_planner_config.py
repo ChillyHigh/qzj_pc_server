@@ -85,6 +85,30 @@ def _rects_overlap(pose: config.Pose, rect: config.TargetRect) -> bool:
 
 
 class PlannerConfigTest(unittest.TestCase):
+    def test_planned_heights_below_limit(self) -> None:
+        heights = [
+            config.INITIAL_LIFT_H,
+            config.PICKUP_H,
+            config.GRIPPER_DROP_H,
+            config.FUNNEL_POSE_H,
+            config.PREPARE_PICK_MOVING_H,
+            config.放漏斗高度,
+            config.FUNNEL_RELEASE_H,
+        ]
+        heights.extend(pose[config.H] for pose in config.PICKUP_POSES.values())
+        heights.extend(
+            pose[config.H] + offset
+            for pose in config.PICKUP_POSES.values()
+            for offset in (config.货箱高, config.豆子厚度)
+        )
+        heights.extend(
+            pose[config.H]
+            for carrier_poses in config.DROP_POSES.values()
+            for pose in carrier_poses.values()
+        )
+
+        self.assertTrue(all(height < 0.36 for height in heights))
+
     def test_pickup_poses_put_box_on_arm_y_zero(self) -> None:
         for position_id, pose in config.PICKUP_POSES.items():
             box_center = config.TARGET_RECTS[position_id][config.TARGET_CENTER]

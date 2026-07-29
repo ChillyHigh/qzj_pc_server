@@ -34,9 +34,10 @@ Pose = tuple[float, float, float, float, float, float, float]
 
 # ---- 高度常量 ---------------------------------------------------------------
 
-PICKUP_H = 0.4
-GRIPPER_DROP_H = 0.3
-FUNNEL_POSE_H = 0.3
+INITIAL_LIFT_H = 0.3
+PICKUP_H = 0.34
+GRIPPER_DROP_H = 0.34
+FUNNEL_POSE_H = 0.34
 
 # ---- 漏斗几何 ---------------------------------------------------------------
 
@@ -119,7 +120,7 @@ ARM_SPEED_SCALE = 0.8
 ARM_FUNNEL_SPEED_SCALE = 0.5
 S_CROSS_SPEED_SCALE = 0.8
 
-PREPARE_PICK_MOVING_H = 0.42
+PREPARE_PICK_MOVING_H = 0.34
 
 WAIT_POS_TOLERANCE = 0.02
 WAIT_YAW_TOLERANCE = math.radians(3.0)

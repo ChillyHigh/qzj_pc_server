@@ -36,6 +36,14 @@ class FakeClient:
         self.sent.append(state)
 
 
+class FakeTagGate:
+    def __init__(self) -> None:
+        self.states: list[MachineState] = []
+
+    def publish(self, state: MachineState, now: float) -> None:
+        self.states.append(state)
+
+
 class ManualClock:
     def __init__(self) -> None:
         self.now = 0.0
@@ -57,7 +65,14 @@ class DelayNodeTest(unittest.TestCase):
         path = FakePath(5, duration=0.02, base=2.0)
         arm = ActionNode("arm_after_delay", deps=[delay], kind="arm", path=path)
         dag = DAG([start, delay, arm])
-        executor = MissionExecutor(client, control_hz=100.0, clock=clock, sleep=clock.sleep)
+        tag_gate = FakeTagGate()
+        executor = MissionExecutor(
+            client,
+            control_hz=100.0,
+            clock=clock,
+            sleep=clock.sleep,
+            tag_gate=tag_gate,
+        )
 
         result = executor.run(dag)
 
@@ -66,6 +81,7 @@ class DelayNodeTest(unittest.TestCase):
         self.assertGreaterEqual(clock.now, 1.0 + path.duration)
         self.assertIn((0.0, 0), path.calls)
         self.assertEqual(client.sent[0], initial_state)
+        self.assertEqual(tag_gate.states, client.sent)
 
     def test_delay_node_rejects_negative_duration(self) -> None:
         start = StartNode("start", MachineState())

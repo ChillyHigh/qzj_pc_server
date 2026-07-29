@@ -6,8 +6,8 @@ import unittest
 import arm
 from connection.protocol import Feedback
 from connection.client import MachineState
-from plan import ActionNode, WaitNode
-from planner import ChassisReachedTarget, Planner
+from plan import ActionNode, StartNode, WaitNode
+from planner import ChassisReachedTarget, Planner, config
 
 INIT_CHASSIS = (0.3, 0.0, 0.0)
 INIT_ARM = (0.055, 0.0, 0.0, 0.3, 0.0)
@@ -103,6 +103,31 @@ class TestPlannerGeneration(unittest.TestCase):
         for node in dag.nodes:
             if isinstance(node, ActionNode):
                 self.assertIsNotNone(node.path, f"{node.name} path 为 None")
+
+    def test_initial_h_lift_precedes_chassis(self) -> None:
+        low_state = MachineState(
+            x=INIT_STATE.x,
+            y=INIT_STATE.y,
+            yaw=INIT_STATE.yaw,
+            h=0.2,
+            q1=INIT_STATE.q1,
+            q2=INIT_STATE.q2,
+            gripper_yaw=INIT_STATE.gripper_yaw,
+            gripper_opening=INIT_STATE.gripper_opening,
+        )
+        dag, _ = Planner(low_state).generate([3, 1, 2], [4, 1, 2, 3, 5])
+
+        start = next(node for node in dag.nodes if isinstance(node, StartNode))
+        lift = next(node for node in dag.nodes if "initial_h_lift" in node.name)
+        chassis_move = next(node for node in dag.nodes if "chassis_to_pickup_area" in node.name)
+
+        self.assertIsInstance(lift, ActionNode)
+        self.assertEqual(lift.deps, [start])
+        self.assertEqual(chassis_move.deps, [lift])
+        self.assertIsNotNone(lift.path)
+        assert isinstance(lift, ActionNode) and lift.path is not None
+        end = lift.path(lift.path.duration, order=0)
+        self.assertAlmostEqual(float(end[0]), config.INITIAL_LIFT_H)
 
     def test_different_assignments_produce_dag(self) -> None:
         dag1, time1 = self.planner.generate([1, 2, 3], [1, 2, 3, 4, 5])

@@ -191,7 +191,8 @@ class Planner:
         start = StartNode(self._next_name("start"), self._initial_state)
         nodes.append(start)
 
-        prev = self._add_move_to_pickup_area(nodes, start)
+        lift_done = self._add_initial_lift(nodes, start)
+        prev = self._add_move_to_pickup_area(nodes, lift_done)
 
         bean_at_pos = {v: k for k, v in bean_pickup_pos.items()}
         pickup_order = [1, 3, 2]
@@ -230,6 +231,27 @@ class Planner:
         return DAG(nodes)
 
     # ---- Phase 0: 移动到取货区 -----------------------------------------------
+
+    def _add_initial_lift(
+        self, nodes: list[AbstractNode], dep: AbstractNode
+    ) -> AbstractNode:
+        """保持机械臂末端姿态，将 h 升到起步移动高度。"""
+        target: ArmCartesian = (
+            self._arm[0],
+            self._arm[1],
+            self._arm[2],
+            config.INITIAL_LIFT_H,
+            self._arm[4],
+        )
+        lift = ActionNode(
+            name=self._next_name("initial_h_lift"),
+            deps=[dep],
+            kind="arm",
+            path=arm.move(self._arm, target),
+        )
+        nodes.append(lift)
+        self._arm = target
+        return lift
 
     def _add_move_to_pickup_area(
         self, nodes: list[AbstractNode], dep: AbstractNode
