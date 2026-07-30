@@ -389,6 +389,13 @@ class Planner:
     ) -> AbstractNode:
 
         funnel_xy = config.FUNNEL_ARM_TARGET[funnel_kind]
+        lift_target: ArmCartesian = (
+            self._arm[0],
+            self._arm[1],
+            self._arm[2],
+            config.放漏斗高度,
+            self._arm[4],
+        )
         funnel_target: ArmCartesian = (
             funnel_xy[0],
             funnel_xy[1],
@@ -397,13 +404,19 @@ class Planner:
             config.GRIPPER_CLOSED_ANGLE,
         )
 
-        arm_to_funnel = ActionNode(
-            name=self._next_name(f"arm_to_{funnel_kind}_p{pickup_pos}"),
+        arm_lift = ActionNode(
+            name=self._next_name(f"arm_lift_{funnel_kind}_p{pickup_pos}"),
             deps=[arm_after_pick],
             kind="arm",
-            path=arm.move(self._arm, funnel_target),
+            path=arm.move(self._arm, lift_target),
         )
-        nodes.append(arm_to_funnel)
+        arm_to_funnel = ActionNode(
+            name=self._next_name(f"arm_to_{funnel_kind}_p{pickup_pos}"),
+            deps=[arm_lift],
+            kind="arm",
+            path=arm.move(lift_target, funnel_target),
+        )
+        nodes.extend([arm_lift, arm_to_funnel])
 
         current_arm: ArmCartesian = (
             funnel_target[0],
