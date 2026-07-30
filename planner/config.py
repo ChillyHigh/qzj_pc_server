@@ -114,6 +114,13 @@ GRIPPER_OPEN_ANGLE = math.radians(150.0)
 GRIPPER_CLOSED_ANGLE = 0.0
 
 放漏斗高度 = 0.3
+INITIAL_ARM_STOW: tuple[float, float, float, float, float] = (
+    0.2,
+    0.0,
+    0.0,
+    放漏斗高度,
+    GRIPPER_CLOSED_ANGLE,
+)
 
 CHASSIS_SPEED_SCALE = 0.8
 ARM_SPEED_SCALE = 0.8

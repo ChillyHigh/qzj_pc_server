@@ -192,7 +192,8 @@ class Planner:
         nodes.append(start)
 
         lift_done = self._add_initial_lift(nodes, start)
-        prev = self._add_move_to_pickup_area(nodes, lift_done)
+        arm_stowed = self._add_initial_stow(nodes, lift_done)
+        prev = self._add_move_to_pickup_area(nodes, lift_done, arm_stowed)
 
         bean_at_pos = {v: k for k, v in bean_pickup_pos.items()}
         pickup_order = [1, 3, 2]
@@ -245,7 +246,7 @@ class Planner:
             self._arm[0],
             self._arm[1],
             self._arm[2],
-            config.INITIAL_LIFT_H,
+            config.放漏斗高度,
             self._arm[4],
         )
         lift = ActionNode(
@@ -258,8 +259,26 @@ class Planner:
         self._arm = target
         return lift
 
-    def _add_move_to_pickup_area(
+    def _add_initial_stow(
         self, nodes: list[AbstractNode], dep: AbstractNode
+    ) -> AbstractNode:
+        """底盘驶向取货区时，将机械臂同步收至安全位。"""
+        target: ArmCartesian = config.INITIAL_ARM_STOW
+        stow = ActionNode(
+            name=self._next_name("initial_arm_stow"),
+            deps=[dep],
+            kind="arm",
+            path=arm.move(self._arm, target),
+        )
+        nodes.append(stow)
+        self._arm = target
+        return stow
+
+    def _add_move_to_pickup_area(
+        self,
+        nodes: list[AbstractNode],
+        dep: AbstractNode,
+        arm_stowed: AbstractNode,
     ) -> AbstractNode:
         pickup_1 = config.PICKUP_POSES[1]
         raw_target: DrivePose = (
@@ -286,7 +305,7 @@ class Planner:
 
         merge = AbstractNode(
             self._next_name("pickup_area_reached"),
-            deps=[chassis_move, wait],
+            deps=[chassis_move, wait, arm_stowed],
         )
         nodes.append(merge)
         return merge
