@@ -218,9 +218,14 @@ class Planner:
         )
 
         cross_done = self._add_cross_field(nodes, prev, first_drive)
+        ready_to_drop = AbstractNode(
+            self._next_name("ready_to_drop"),
+            deps=[cross_done, arm_prev],
+        )
+        nodes.append(ready_to_drop)
 
         # 首个放豆：底盘已由 s_cross 送到，跳过 chassis move
-        prev = self._add_drop_first(nodes, cross_done, first_drop_pos, first_carrier)
+        prev = self._add_drop_first(nodes, ready_to_drop, first_drop_pos, first_carrier)
         for bean in drop_order[1:]:
             pos = bean_drop_pos[bean]
             carrier = assignment[bean]
@@ -354,31 +359,49 @@ class Planner:
                      )
 
         if carrier == "gripper":
+            lift_target: ArmCartesian = (
+                self._arm[0],
+                self._arm[1],
+                self._arm[2],
+                config.放漏斗高度,
+                self._arm[4],
+            )
+            arm_lift = ActionNode(
+                name=self._next_name(f"arm_lift_gripper_p{pickup_pos}"),
+                deps=[arm_do],
+                kind="arm",
+                path=arm.move(self._arm, lift_target),
+            )
 
             with_draw_pos: ArmCartesian = (0.1, 0, 0, config.放漏斗高度,
                      config.GRIPPER_CLOSED_ANGLE)
 
             arm_withdraw = ActionNode(
                 name=self._next_name(f"withdraw_arm_{pickup_pos}"),
-                deps=[arm_prep],
+                deps=[arm_lift],
                 kind="arm",
                 path=arm.move(
-                    self._arm,
+                    lift_target,
                     with_draw_pos
                 ),
             )
-            nodes.append(arm_withdraw)
+            nodes.extend([arm_lift, arm_withdraw])
             self._arm = with_draw_pos
 
             merge = AbstractNode(
                 self._next_name(f"pick_{pickup_pos}_done"),
-                deps=[chassis_move, arm_withdraw],
+                deps=[chassis_move, arm_lift],
             )
             nodes.append(merge)
 
-            return merge, merge
-        store = self._add_funnel_load(nodes, arm_do, carrier, pickup_pos)
-        return arm_do, store
+            return merge, arm_withdraw
+        arm_lift, store = self._add_funnel_load(nodes, arm_do, carrier, pickup_pos)
+        merge = AbstractNode(
+            self._next_name(f"pick_{pickup_pos}_done"),
+            deps=[chassis_move, arm_lift],
+        )
+        nodes.append(merge)
+        return merge, store
 
     def _add_funnel_load(
         self,
@@ -386,7 +409,7 @@ class Planner:
         arm_after_pick: ActionNode,
         funnel_kind: DropCarrier,
         pickup_pos: PosId,
-    ) -> AbstractNode:
+    ) -> tuple[ActionNode, ActionNode]:
 
         funnel_xy = config.FUNNEL_ARM_TARGET[funnel_kind]
         lift_target: ArmCartesian = (
@@ -463,7 +486,7 @@ class Planner:
             config.GRIPPER_CLOSED_ANGLE,
         )
 
-        return arm_close
+        return arm_lift, arm_close
 
     # ---- Phase 2: 跨场 -------------------------------------------------------
 
