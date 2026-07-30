@@ -27,7 +27,7 @@ class ChassisWaypoint(Waypoint):
 
 class ChassisToppraPlanner(ToppraPlanner):
     def __init__(self) -> None:
-        super().__init__(vlim=config.V_LIMIT, alim=config.A_LIMIT)
+        super().__init__(vlim=config.V_LIMIT, alim=config.A_LIMIT, spline_bc="natural")
 
     def plan(
         self,

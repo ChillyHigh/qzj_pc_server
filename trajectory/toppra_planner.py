@@ -18,6 +18,7 @@ DEFAULT_MIN_TURN_DEG = 8.0
 DEFAULT_WINDOW_RATIO = 0.6
 DEFAULT_TARGET_SPACING = 0.08
 TOPPRA_SOLVER = "seidel"
+DEFAULT_SPLINE_BC = "not-a-knot"
 
 
 def densify_and_smooth(
@@ -56,6 +57,7 @@ class ToppraPlanner:
         q_min: Iterable[float] | None = None,
         q_max: Iterable[float] | None = None,
         solver: str = TOPPRA_SOLVER,
+        spline_bc: str = DEFAULT_SPLINE_BC,
     ) -> None:
         """创建规划器。
 
@@ -65,6 +67,7 @@ class ToppraPlanner:
             q_min: 可选位置下限。
             q_max: 可选位置上限。
             solver: TOPPRA 求解器名。
+            spline_bc: SciPy CubicSpline 边界条件。
         """
 
         self.vlim = np.asarray(tuple(vlim), dtype=float)
@@ -72,6 +75,7 @@ class ToppraPlanner:
         self.q_min = None if q_min is None else np.asarray(tuple(q_min), dtype=float)
         self.q_max = None if q_max is None else np.asarray(tuple(q_max), dtype=float)
         self.solver = solver
+        self.spline_bc = spline_bc
 
     def plan(
         self,
@@ -88,7 +92,7 @@ class ToppraPlanner:
         waypoints = deduplicate_waypoints(waypoints)
         path_qs = densify_and_smooth(waypoints, max_step=max_step)
         path_s = compute_path_s(path_qs)
-        path = ta.SplineInterpolator(path_s, path_qs)
+        path = ta.SplineInterpolator(path_s, path_qs, bc_type=self.spline_bc)
 
         waypoint_qs = np.asarray([wp.q for wp in waypoints], dtype=float)
         waypoint_s = []
