@@ -1,7 +1,7 @@
-"""底盘碰撞检测与 3D A* 避障路径规划。
+"""底盘碰撞检测与 3D Lazy Theta* 避障路径规划。
 
 碰撞模型：以驱动轮中心为原点，前方 +CHASSIS_HALF_X_FRONT，后方 -CHASSIS_HALF_X_REAR，
-左右 ±CHASSIS_HALF_Y 的矩形。A* 在 (x, y, yaw) 三维空间中搜索，分辨率 1cm / 10°。
+左右 ±CHASSIS_HALF_Y 的矩形。Lazy Theta* 在 (x, y, yaw) 三维空间中搜索，分辨率 1cm / 10°。
 
 只依赖 plan.setting 和 chassis.config，不引用 planner 包。
 """
@@ -10,6 +10,7 @@ from __future__ import annotations
 
 import heapq
 import math
+from functools import lru_cache
 
 from plan.setting import (
     CHASSIS_HALF_X_FRONT,
@@ -39,6 +40,9 @@ _W_MAX = config.V_LIMIT[2]
 
 _MAX_EXPANSIONS = 300000
 _LOS_YAW_STEP = math.radians(2.0)
+_PATH_CACHE_SIZE = 256
+
+Bounds = tuple[float, float, float, float]
 
 
 # =============================================================================
@@ -85,6 +89,35 @@ def _rect_corners(
         (center[0] + half[0], center[1] + half[1]),
         (center[0] + half[0], center[1] - half[1]),
     )
+
+
+def _corner_bounds(corners: tuple[tuple[float, float], ...]) -> Bounds:
+    """返回多边形的轴对齐边界 (min_x, min_y, max_x, max_y)。"""
+    xs = [point[0] for point in corners]
+    ys = [point[1] for point in corners]
+    return (min(xs), min(ys), max(xs), max(ys))
+
+
+def _rect_bounds(rect: tuple[tuple[float, float], tuple[float, float]]) -> Bounds:
+    center, half = rect
+    return (
+        center[0] - half[0],
+        center[1] - half[1],
+        center[0] + half[0],
+        center[1] + half[1],
+    )
+
+
+def _bounds_overlap(first: Bounds, second: Bounds) -> bool:
+    return not (
+        first[2] <= second[0]
+        or second[2] <= first[0]
+        or first[3] <= second[1]
+        or second[3] <= first[1]
+    )
+
+
+_TARGET_BOUNDS = {pos_id: _rect_bounds(rect) for pos_id, rect in TARGET_RECTS.items()}
 
 
 def _polygon_axes(poly: tuple[tuple[float, float], ...]) -> list[tuple[float, float]]:
@@ -174,10 +207,17 @@ def is_drive_pose_colliding(
     ):
         return True
     if not skip_boxes:
+        base_bounds = _corner_bounds(base_corners)
+        funnel_bounds = _corner_bounds(funnel_corners)
         for pos_id, rect in TARGET_RECTS.items():
-            if _rects_overlap(base_corners, rect):
+            target_bounds = _TARGET_BOUNDS[pos_id]
+            if _bounds_overlap(base_bounds, target_bounds) and _rects_overlap(base_corners, rect):
                 return True
-            if pos_id <= 3 and _rects_overlap(funnel_corners, rect):
+            if (
+                pos_id <= 3
+                and _bounds_overlap(funnel_bounds, target_bounds)
+                and _rects_overlap(funnel_corners, rect)
+            ):
                 return True
     return False
 
@@ -312,15 +352,59 @@ def _direct_cost(ix1: int, iy1: int, iaz1: int, ix2: int, iy2: int, iaz2: int) -
     return dist / _V_MAX + dyaw / _W_MAX
 
 
+def _repair_vertex(
+    cur: int,
+    parent: dict[int, int],
+    g_score: dict[int, float],
+    closed: set[int],
+    col_cache: dict[int, bool],
+) -> None:
+    """Lazy Theta* 展开前验证父边，不可见时改接到最优已展开邻居。"""
+    cur_parent = parent[cur]
+    if cur_parent == cur:
+        return
+
+    cix, ciy, ciaz = _decode(cur)
+    pix, piy, piaz = _decode(cur_parent)
+    if _line_of_sight(pix, piy, piaz, cix, ciy, ciaz, col_cache):
+        return
+
+    best_parent: int | None = None
+    best_score = float("inf")
+    for nix, niy, niaz, step_cost in _expand_state(cix, ciy, ciaz):
+        if not _is_within_field(nix, niy):
+            continue
+        neighbor = _encode(nix, niy, niaz)
+        if neighbor not in closed:
+            continue
+        score = g_score[neighbor] + step_cost
+        if score < best_score:
+            best_score = score
+            best_parent = neighbor
+
+    if best_parent is None:
+        raise RuntimeError("Lazy Theta* 无法从已展开邻居修复父节点。")
+    g_score[cur] = best_score
+    parent[cur] = best_parent
+
+
 def plan_avoidance_path(
     start: tuple[float, float, float],
     end: tuple[float, float, float],
 ) -> list[tuple[float, float, float]]:
-    """Theta*（any-angle A*）搜索无碰撞时间最优路径。
+    """返回 Lazy Theta* 路径的新 list，避免调用方修改缓存值。"""
+    return list(_plan_path(start, end))
 
-    相比标准 A*，Theta* 在展开节点时额外检查从当前节点的父节点
-    到邻居节点是否有视线（line-of-sight）。如有，则可以直接从祖父
-    跳到邻居，绕过网格约束，产生真正的直线路径。
+
+@lru_cache(maxsize=_PATH_CACHE_SIZE)
+def _plan_path(
+    start: tuple[float, float, float],
+    end: tuple[float, float, float],
+) -> tuple[tuple[float, float, float], ...]:
+    """Lazy Theta* 搜索无碰撞的任意角度路径。
+
+    邻居更新时乐观地继承当前节点的父节点，仅在节点真正展开前检查
+    父边视线；视线受阻时再从已展开邻居中选择代价最小的父节点。
     """
     six, siy, siaz = _xy_to_ix(start[0]), _xy_to_iy(start[1]), _yaw_to_iaz(start[2])
     gix, giy, giaz = _xy_to_ix(end[0]), _xy_to_iy(end[1]), _yaw_to_iaz(end[2])
@@ -338,7 +422,7 @@ def plan_avoidance_path(
     s_key = _encode(six, siy, siaz)
     g_key = _encode(gix, giy, giaz)
     g_score: dict[int, float] = {s_key: 0.0}
-    parent: dict[int, int] = {}
+    parent: dict[int, int] = {s_key: s_key}
     open_set: list[tuple[float, int]] = []
     heapq.heappush(open_set, (_heuristic(six, siy, siaz, gix, giy, giaz), s_key))
     closed: set[int] = set()
@@ -349,14 +433,16 @@ def plan_avoidance_path(
         _, cur = heapq.heappop(open_set)
         if cur in closed:
             continue
+        _repair_vertex(cur, parent, g_score, closed, col_cache)
         if cur == g_key:
-            return _reconstruct_path(parent, cur, start, end)
+            return tuple(_reconstruct_path(parent, cur, start, end))
         closed.add(cur)
         expansions += 1
         cix, ciy, ciaz = _decode(cur)
-        cur_parent = parent.get(cur)
+        cur_parent = parent[cur]
+        pix, piy, piaz = _decode(cur_parent)
 
-        for nix, niy, niaz, step_cost in _expand_state(cix, ciy, ciaz):
+        for nix, niy, niaz, _step_cost in _expand_state(cix, ciy, ciaz):
             if not _is_within_field(nix, niy):
                 continue
             n_key = _encode(nix, niy, niaz)
@@ -370,29 +456,17 @@ def plan_avoidance_path(
             if col_cache[n_key]:
                 continue
 
-            # ── Theta*: 尝试从祖父直接跳到邻居 ──
-            if cur_parent is not None:
-                pix, piy, piaz = _decode(cur_parent)
-                if _line_of_sight(pix, piy, piaz, nix, niy, niaz, col_cache):
-                    tg = g_score[cur_parent] + _direct_cost(pix, piy, piaz, nix, niy, niaz)
-                    if tg < g_score.get(n_key, float("inf")):
-                        g_score[n_key] = tg
-                        parent[n_key] = cur_parent
-                        f = tg + _heuristic(nix, niy, niaz, gix, giy, giaz)
-                        heapq.heappush(open_set, (f, n_key))
-                    continue  # LoS 存在则跳过标准网格扩展
-
-            # ── 标准网格：从当前节点走一步 ──
-            tg = g_score[cur] + step_cost
+            # Lazy Theta*：先假设父节点到邻居可见，检查延迟到邻居展开前。
+            tg = g_score[cur_parent] + _direct_cost(pix, piy, piaz, nix, niy, niaz)
             if tg < g_score.get(n_key, float("inf")):
                 g_score[n_key] = tg
-                parent[n_key] = cur
+                parent[n_key] = cur_parent
                 f = tg + _heuristic(nix, niy, niaz, gix, giy, giaz)
                 heapq.heappush(open_set, (f, n_key))
 
     if expansions >= _MAX_EXPANSIONS:
-        raise ValueError(f"Theta* 超过最大展开 {_MAX_EXPANSIONS}")
-    raise ValueError(f"Theta* 无路径 ({start[0]:.2f},{start[1]:.2f})→({end[0]:.2f},{end[1]:.2f})")
+        raise ValueError(f"Lazy Theta* 超过最大展开 {_MAX_EXPANSIONS}")
+    raise ValueError(f"Lazy Theta* 无路径 ({start[0]:.2f},{start[1]:.2f})→({end[0]:.2f},{end[1]:.2f})")
 
 
 def _unwrap_path_yaw(
@@ -421,7 +495,7 @@ def _reconstruct_path(
     """回溯 + 共线合并 + yaw 解缠绕。"""
     raw: list[tuple[float, float, float]] = []
     key = goal_key
-    while key in parent:
+    while parent[key] != key:
         ix, iy, iaz = _decode(key)
         raw.append((_ix_to_x(ix), _iy_to_y(iy), _iaz_to_yaw(iaz)))
         key = parent[key]
